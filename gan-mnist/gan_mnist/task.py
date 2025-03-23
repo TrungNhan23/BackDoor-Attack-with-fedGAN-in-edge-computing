@@ -244,11 +244,13 @@
 #         optimizer_G.step()      
 #         return loss_D.item(), loss_G.item()  
 
-
+import torch
+print("CUDA Available:", torch.cuda.is_available())  
+print("Number of GPUs:", torch.cuda.device_count())  
+print("GPU Name:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No GPU")  
+print("CUDA Version:", torch.version.cuda)  
 
 from collections import OrderedDict
-
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
@@ -259,12 +261,14 @@ from flwr_datasets.partitioner import IidPartitioner
 import matplotlib.pyplot as plt
 import os
 
+
+
 class Generator(nn.Module):
     def __init__(self):
         super().__init__()
         self.fc = nn.Linear(100, 256*7*7)
         self.trans_conv1 = nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1)
-        self.trans_conv2 = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=1, padding=1)
+        self.trans_conv2 = nn.ConvTranspose2d(128,  64, kernel_size=3, stride=1, padding=1)
         self.trans_conv3 = nn.ConvTranspose2d(64, 32, kernel_size=3, stride=1, padding=1)
         self.trans_conv4 = nn.ConvTranspose2d(32, 1, kernel_size=3, stride=2, padding=1, output_padding=1)
 
@@ -321,6 +325,8 @@ class GlobalModel(nn.Module):
         x = self.fc2(x)
         return x
 
+
+
 fds = None
 
 def load_data(partition_id: int, num_partitions: int, num_samples: int = 2300):
@@ -347,8 +353,10 @@ def load_data(partition_id: int, num_partitions: int, num_samples: int = 2300):
     return trainloader, testloader
 
 def test(G, D, testloader, device, latent_size=100):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     G.to(device)
     D.to(device)
+
     G.eval()
     D.eval()
     with torch.no_grad():
@@ -382,7 +390,7 @@ def save_plots(D_loss, G_loss, output_dir="output", filename="training_Loss_grap
     plt.figure()
     plt.plot(range(1, len(D_loss) + 1), D_loss, linestyle='-', label='Disciminator Loss')
     plt.plot(range(1, len(G_loss) + 1), G_loss, linestyle='-', label='Generator Loss')
-    plt.xlabel("Round")
+    plt.xlabel("10 x Round = 50")
     plt.ylabel("Value")
     plt.title("Generator and Disciminator Loss Over Rounds")
     plt.legend()
@@ -390,11 +398,12 @@ def save_plots(D_loss, G_loss, output_dir="output", filename="training_Loss_grap
     plt.close()
     
 def train(G, D, trainloader, epochs, device, latent_size=100):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     G.to(device)
     D.to(device)
     
-    optimizer_G = torch.optim.Adam(G.parameters(), lr=0.0004, betas=(0.5, 0.999)) # Tăng lr
-    optimizer_D = torch.optim.Adam(D.parameters(), lr=0.00005, betas=(0.5, 0.999)) # Giảm lr
+    optimizer_G = torch.optim.Adam(G.parameters(), lr=0.0001, betas=(0.5, 0.999)) # Tăng lr
+    optimizer_D = torch.optim.Adam(D.parameters(), lr=0.0001, betas=(0.5, 0.999)) # Giảm lr
     
     adversarial_loss = torch.nn.BCEWithLogitsLoss().to(device)
     
@@ -440,7 +449,6 @@ def train(G, D, trainloader, epochs, device, latent_size=100):
         print(f"Epoch [{epoch}/{epochs}] Loss D: {loss_D.item():.4f}, Loss G: {loss_G.item():.4f}")
         
         # Lưu ảnh sinh ra sau mỗi epoch
-        if epoch % 10 == 0:
-            save_generated_images(generated_images, output_dir="output", filename=f"generated_images_epoch_{epoch}.png")
-
+        if epoch % 9 == 0:
+            save_generated_images(generated_images, output_dir="output", filename=f"generated_images_round_{epoch}.png")  
     return D_losses, G_losses        

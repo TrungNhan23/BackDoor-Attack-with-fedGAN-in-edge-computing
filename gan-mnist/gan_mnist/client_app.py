@@ -156,12 +156,15 @@ from gan_mnist.task import (
     train,
     test,
     save_plots,
+    
     save_generated_images
 )
 
 def print_weights(weights, name):
     """In ra một phần nhỏ của trọng số để kiểm tra."""
     print(f"{name} weights sample: {weights[0].flatten()[:5]}")
+D_losses = []
+G_losses = []
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
@@ -171,24 +174,26 @@ class FlowerClient(NumPyClient):
         self.trainloader = trainloader
         self.valloader = valloader
         self.local_epochs = local_epochs
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {self.device}")
         self.G.to(self.device)
         self.D.to(self.device)
         self.latent_size = latent_size
         self.partition_id = partition_id
         self.total_rounds = total_rounds
-        self.D_losses = []
-        self.G_losses = []
+
 
     def get_parameters(self, config):
-        return get_weights(self.G) + get_weights(self.D)
+        return get_weights(self.D) 
+    # + get_weights(self.G)
 
     def set_parameters(self, parameters):
-        G_params_len = len(list(self.G.state_dict().keys()))
-        G_params = parameters[:G_params_len]
-        D_params = parameters[G_params_len:]
-        set_weights(self.G, G_params)
-        set_weights(self.D, D_params)
+        # G_params_len = len(list(self.G.state_dict().keys()))
+        # G_params = parameters[:G_params_len]
+        # D_params = parameters[G_params_len:]
+        # set_weights(self.G, G_params)
+        # set_weights(self.D, D_params)
+        set_weights(self.D, parameters)
 
     def fit(self, parameters, config):
         self.set_parameters(parameters=parameters)
@@ -200,20 +205,19 @@ class FlowerClient(NumPyClient):
             self.device,
             self.latent_size,
         )
-        self.D_losses.append(train_loss_D)
-        self.G_losses.append(train_loss_G)
-        return self.get_parameters(config), len(self.trainloader.dataset), {"train_loss_D": train_loss_D, "train_loss_G": train_loss_G}
+        D_losses.extend(train_loss_D)
+        G_losses.extend(train_loss_G)
+        return self.get_parameters(config), len(self.trainloader.dataset), {
+        "train_loss_D": train_loss_D,
+        "train_loss_G": train_loss_G,
+        }
 
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
-        current_round = config.get("current_round", -1)
         validity, generated_img = test(self.G, self.D, self.valloader, self.device, self.latent_size)
-        if current_round == self.total_rounds and self.partition_id == 0:
-            save_generated_images(generated_img)
-            save_plots(self.D_losses, self.G_losses) #Sửa lại ở đây
+        save_plots(D_loss=D_losses, G_loss=G_losses)
         print(f"Validation Validity: {validity}")
         return validity, len(self.valloader.dataset), {}
-
 
 def client_fn(context: Context):
     G = Generator()

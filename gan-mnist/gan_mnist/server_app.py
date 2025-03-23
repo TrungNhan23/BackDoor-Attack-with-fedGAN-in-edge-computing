@@ -45,7 +45,7 @@
 from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
-
+from typing import Dict, List, Tuple
 from gan_mnist.task import Generator, Discriminator, GlobalModel, get_weights
 
 def fit_round(server_round: int):
@@ -57,16 +57,17 @@ def server_fn(context: Context):
     fraction_fit = context.run_config["fraction-fit"]
 
     D = Discriminator()
-    G = Generator()
+    # G = Generator()
 
-    ndarrays = get_weights(G) + get_weights(D)
+    ndarrays = get_weights(D) 
+    # + get_weights(G)
     parameters = ndarrays_to_parameters(ndarrays)
-
     strategy = FedAvg(
         fraction_fit=fraction_fit,
-        fraction_evaluate=0.5,
+        fraction_evaluate=0.8, #evaluate all clients
         initial_parameters=parameters,
         on_fit_config_fn=fit_round,
+
     )
     config = ServerConfig(num_rounds=num_rounds)
 
