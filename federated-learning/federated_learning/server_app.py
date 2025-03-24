@@ -3,7 +3,7 @@
 from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
-
+from torchinfo import summary
 from federated_learning.task import Net, get_weights
 
 
@@ -14,6 +14,8 @@ def server_fn(context: Context):
 
     # Initialize model parameters
     ndarrays = get_weights(Net())
+    summary(Net(), input_size=(32, 1, 28, 28))
+    
     parameters = ndarrays_to_parameters(ndarrays)
 
     # Define strategy
