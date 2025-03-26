@@ -44,40 +44,79 @@ import matplotlib.pyplot as plt
 #         x = self.fc(x)
 #         return F.softmax(x, dim=1)
 
-class Net(nn.Module):
-    """Model (simple CNN adapted from 'PyTorch: A 60 Minute Blitz')"""
+# class Net(nn.Module):
+#     """Model (simple CNN adapted from 'PyTorch: A 60 Minute Blitz')"""
 
+#     def __init__(self):
+#         super(Net, self).__init__()
+#         self.conv1 = nn.Conv2d(1, 64, kernel_size=4, stride=1, padding=0)  # Conv(1,64,4)
+#         self.conv2 = nn.Conv2d(64, 64, kernel_size=4, stride=1, padding=0) # Conv(64,64,4)
+#         self.conv3 = nn.Conv2d(64, 64, kernel_size=4, stride=1, padding=0) # Conv(64,64,4)
+#         self.conv4 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=0) # Conv(64,128,3)
+#         self.conv5 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=0) # Conv(128,128,3)
+#         self.conv6 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=0) # Conv(128,128,3)
+#         self.avgpool = nn.AvgPool2d(kernel_size=2, stride=2) # AvgPooling(2,2)
+        
+#         # Thay đổi số lớp output thành 10
+#         self.fc = nn.Linear(128 * 6 * 6, 10)  # 10 lớp phân loại
+
+#     def forward(self, x):
+#         x = F.leaky_relu(self.conv1(x))
+#         x = F.leaky_relu(self.conv2(x))
+#         x = F.leaky_relu(self.conv3(x))
+#         x = F.leaky_relu(self.conv4(x))
+#         x = F.leaky_relu(self.conv5(x))
+#         x = F.leaky_relu(self.conv6(x))
+#         x = self.avgpool(x)
+#         x = torch.flatten(x, start_dim=1)  # Flatten để đưa vào FC
+#         x = self.fc(x)
+#         return F.softmax(x, dim=1)  # Softmax cho phân loại
+
+class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 64, kernel_size=4, stride=1, padding=0)  # Conv(1,64,4)
-        self.conv2 = nn.Conv2d(64, 64, kernel_size=4, stride=1, padding=0) # Conv(64,64,4)
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=4, stride=1, padding=0) # Conv(64,64,4)
-        self.conv4 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=0) # Conv(64,128,3)
-        self.conv5 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=0) # Conv(128,128,3)
-        self.conv6 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=0) # Conv(128,128,3)
-        self.avgpool = nn.AvgPool2d(kernel_size=2, stride=2) # AvgPooling(2,2)
-        
-        # Thay đổi số lớp output thành 10
-        self.fc = nn.Linear(128 * 6 * 6, 10)  # 10 lớp phân loại
+        # Lớp Conv2d đầu tiên: 1 -> 64 kênh, kernel 5x5, stride 2, padding=2 (để "same")
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=64, kernel_size=5, stride=2, padding=2)
+        # Lớp Conv2d thứ hai: 64 -> 128 kênh, kernel 5x5, stride 2, padding=2
+        self.conv2 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=5, stride=2, padding=2)
+        # Lớp fully connected (Dense) sau khi flatten
+        # Với ảnh đầu vào 28x28, sau 2 lớp conv với stride=2, kích thước feature map sẽ là 7x7
+        self.fc = nn.Linear(128 * 7 * 7, 10)
+        # Định nghĩa dropout với tỷ lệ 0.3
+        self.dropout = nn.Dropout(0.3)
+        # Định nghĩa LeakyReLU với negative_slope=0.2
+        self.leaky_relu = nn.LeakyReLU(0.2)
 
     def forward(self, x):
-        x = F.leaky_relu(self.conv1(x))
-        x = F.leaky_relu(self.conv2(x))
-        x = F.leaky_relu(self.conv3(x))
-        x = F.leaky_relu(self.conv4(x))
-        x = F.leaky_relu(self.conv5(x))
-        x = F.leaky_relu(self.conv6(x))
-        x = self.avgpool(x)
-        x = torch.flatten(x, start_dim=1)  # Flatten để đưa vào FC
-        x = self.fc(x)
-        return F.softmax(x, dim=1)  # Softmax cho phân loại
+        # x có shape: (batch_size, 1, 28, 28)
+        x = self.conv1(x)           # (batch_size, 64, 28, 28) với padding=2 và stride=2 → (batch_size, 64, 14, 14)
+        x = self.leaky_relu(x)
+        x = self.dropout(x)
+        
+        x = self.conv2(x)           # (batch_size, 128, 14, 14) → (batch_size, 128, 7, 7)
+        x = self.leaky_relu(x)
+        x = self.dropout(x)
+        
+        x = x.view(x.size(0), -1)   # Flatten, shape: (batch_size, 128*7*7)
+        x = self.fc(x)              # Dense layer cho ra 1 giá trị
+        return x
+
+# Ví dụ khởi tạo và test forward:
+if __name__ == "__main__":
+    model = Discriminator()
+    # Tạo dữ liệu giả: batch_size = 16, ảnh 28x28, 1 kênh
+    dummy_input = torch.randn(16, 1, 28, 28)
+    output = model(dummy_input)
+    print(output.shape)  # Kỳ vọng shape: (16, 1)
+   
+    
 fds = None  # Cache FederatedDataset
 
 #Implement GAN for attacker here
 
 
 
-def load_data(partition_id: int, num_partitions: int, num_samples: int = 3000):
+def load_data(partition_id: int, num_partitions: int, num_samples: int = 10000):
     global fds
     if fds is None:
         partitioner = IidPartitioner(num_partitions=num_partitions)
@@ -109,8 +148,8 @@ def load_data(partition_id: int, num_partitions: int, num_samples: int = 3000):
     train_data, val_data, test_data = random_split(partition, [train_size, val_size, test_size])
 
     # Dataloader cho các phần
-    trainloader = DataLoader(train_data, batch_size=32, shuffle=True)
-    valloader = DataLoader(val_data, batch_size=32, shuffle=False)
+    trainloader = DataLoader(train_data, batch_size=64, shuffle=True)
+    valloader = DataLoader(val_data, batch_size=64, shuffle=False)
     testloader = DataLoader(test_data, batch_size=32)
 
     return trainloader, valloader, testloader
@@ -238,6 +277,7 @@ def metric_plot(train_loss, val_loss, train_acc, val_acc, output_dirs="output"):
     # Vẽ Loss trên subplot đầu tiên
     axes[0].plot(range(len(train_loss)), train_loss, label="Train Loss", color='blue')
     axes[0].plot(range(len(val_loss)), val_loss, label="Validation Loss", color='red')
+    plt.ylim(0.2, 1)
     axes[0].set_title("Loss Plot")
     axes[0].set_xlabel("Rounds")
     axes[0].set_ylabel("Loss")
@@ -247,6 +287,7 @@ def metric_plot(train_loss, val_loss, train_acc, val_acc, output_dirs="output"):
     # Vẽ Accuracy trên subplot thứ hai
     axes[1].plot(range(len(train_acc)), train_acc, label="Train Accuracy", color='blue')
     axes[1].plot(range(len(val_acc)), val_acc, label="Validation Accuracy", color='red')
+    plt.ylim(0.2, 1)
     axes[1].set_title("Accuracy Plot")
     axes[1].set_xlabel("Rounds")
     axes[1].set_ylabel("Accuracy")

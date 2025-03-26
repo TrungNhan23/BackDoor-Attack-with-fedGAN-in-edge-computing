@@ -26,13 +26,14 @@ clientapp = "federated_learning.client_app:app"
 
 [tool.flwr.app.config]
 num-server-rounds = 10
-fraction-fit = 0.8
-local-epochs = 5
+fraction-fit = 1.0
+local-epochs = 1
+#have-attacker = True
 
 [tool.flwr.federations]
 default = "local-simulation"
 
 [tool.flwr.federations.local-simulation]
 options.num-supernodes = 10
-options.backend.client-resources.num-cpus = 1 # each ClientApp assumes to use 1 CPU (default is 2)
+options.backend.client-resources.num-cpus = 1
 options.backend.client-resources.num-gpus = 0.25
