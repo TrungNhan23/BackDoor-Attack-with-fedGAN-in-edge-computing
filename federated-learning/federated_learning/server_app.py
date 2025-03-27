@@ -50,7 +50,7 @@ def pretrain_on_server(model, train_loader, device, epochs=5, learning_rate=1e-3
         
         epoch_loss = running_loss / len(train_loader)
         epoch_acc = correct / total
-        print(f"Pretrain Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}, Accuracy: {epoch_acc:.2f}")
+        print(f"Pretrain Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}, Accuracy: {epoch_acc:.4f}")
     return model
 
 

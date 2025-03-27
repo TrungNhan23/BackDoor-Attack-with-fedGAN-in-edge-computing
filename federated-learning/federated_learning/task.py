@@ -1,11 +1,11 @@
 """federated-learning: A Flower / PyTorch app."""
 
 import torch
+
 print("CUDA Available:", torch.cuda.is_available())  
 print("Number of GPUs:", torch.cuda.device_count())  
 print("GPU Name:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No GPU")  
 print("CUDA Version:", torch.version.cuda)  
-
 
 from collections import OrderedDict
 import os
@@ -15,62 +15,7 @@ from torch.utils.data import DataLoader, random_split
 from torchvision.transforms import Compose, Normalize, ToTensor
 from flwr_datasets import FederatedDataset
 from flwr_datasets.partitioner import IidPartitioner
-
-
 import matplotlib.pyplot as plt 
-# class Net(nn.Module):
-#     """Model (simple CNN adapted from 'PyTorch: A 60 Minute Blitz')"""
-
-#     def __init__(self):
-#         super(Net, self).__init__()
-#         self.conv1 = nn.Conv2d(1, 64, kernel_size=4, stride=1, padding=0)  # Conv(1,64,4)
-#         self.conv2 = nn.Conv2d(64, 64, kernel_size=4, stride=1, padding=0) # Conv(64,64,4)
-#         self.conv3 = nn.Conv2d(64, 64, kernel_size=4, stride=1, padding=0) # Conv(64,64,4)
-#         self.conv4 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=0) # Conv(64,128,3)
-#         self.conv5 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=0) # Conv(128,128,3)
-#         self.conv6 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=0) # Conv(128,128,3)
-#         self.avgpool = nn.AvgPool2d(kernel_size=2, stride=2) # AvgPooling(2,2)
-#         self.fc = nn.Linear(128 * 6 * 6, 11)
-
-#     def forward(self, x):
-#         x = F.leaky_relu(self.conv1(x))
-#         x = F.leaky_relu(self.conv2(x))
-#         x = F.leaky_relu(self.conv3(x))
-#         x = F.leaky_relu(self.conv4(x))
-#         x = F.leaky_relu(self.conv5(x))
-#         x = F.leaky_relu(self.conv6(x))
-#         x = self.avgpool(x)
-#         x = torch.flatten(x, start_dim=1)  # Flatten để đưa vào FC
-#         x = self.fc(x)
-#         return F.softmax(x, dim=1)
-
-# class Net(nn.Module):
-#     """Model (simple CNN adapted from 'PyTorch: A 60 Minute Blitz')"""
-
-#     def __init__(self):
-#         super(Net, self).__init__()
-#         self.conv1 = nn.Conv2d(1, 64, kernel_size=4, stride=1, padding=0)  # Conv(1,64,4)
-#         self.conv2 = nn.Conv2d(64, 64, kernel_size=4, stride=1, padding=0) # Conv(64,64,4)
-#         self.conv3 = nn.Conv2d(64, 64, kernel_size=4, stride=1, padding=0) # Conv(64,64,4)
-#         self.conv4 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=0) # Conv(64,128,3)
-#         self.conv5 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=0) # Conv(128,128,3)
-#         self.conv6 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=0) # Conv(128,128,3)
-#         self.avgpool = nn.AvgPool2d(kernel_size=2, stride=2) # AvgPooling(2,2)
-        
-#         # Thay đổi số lớp output thành 10
-#         self.fc = nn.Linear(128 * 6 * 6, 10)  # 10 lớp phân loại
-
-#     def forward(self, x):
-#         x = F.leaky_relu(self.conv1(x))
-#         x = F.leaky_relu(self.conv2(x))
-#         x = F.leaky_relu(self.conv3(x))
-#         x = F.leaky_relu(self.conv4(x))
-#         x = F.leaky_relu(self.conv5(x))
-#         x = F.leaky_relu(self.conv6(x))
-#         x = self.avgpool(x)
-#         x = torch.flatten(x, start_dim=1)  # Flatten để đưa vào FC
-#         x = self.fc(x)
-#         return F.softmax(x, dim=1)  # Softmax cho phân loại
 
 class Net(nn.Module):
     def __init__(self):
@@ -83,7 +28,7 @@ class Net(nn.Module):
         # Với ảnh đầu vào 28x28, sau 2 lớp conv với stride=2, kích thước feature map sẽ là 7x7
         self.fc = nn.Linear(128 * 7 * 7, 10)
         # Định nghĩa dropout với tỷ lệ 0.3
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(0.7) 
         # Định nghĩa LeakyReLU với negative_slope=0.2
         self.leaky_relu = nn.LeakyReLU(0.2)
 
@@ -101,22 +46,10 @@ class Net(nn.Module):
         x = self.fc(x)              # Dense layer cho ra 1 giá trị
         return x
 
-# Ví dụ khởi tạo và test forward:
-if __name__ == "__main__":
-    model = Discriminator()
-    # Tạo dữ liệu giả: batch_size = 16, ảnh 28x28, 1 kênh
-    dummy_input = torch.randn(16, 1, 28, 28)
-    output = model(dummy_input)
-    print(output.shape)  # Kỳ vọng shape: (16, 1)
-   
     
 fds = None  # Cache FederatedDataset
 
-#Implement GAN for attacker here
-
-
-
-def load_data(partition_id: int, num_partitions: int, num_samples: int = 10000):
+def load_data(partition_id: int, num_partitions: int, num_samples: int = None):
     global fds
     if fds is None:
         partitioner = IidPartitioner(num_partitions=num_partitions)
@@ -137,7 +70,6 @@ def load_data(partition_id: int, num_partitions: int, num_samples: int = 10000):
 
     partition = partition.with_transform(apply_transforms)
 
-    # Chia lại dataset thành train, validation, và test
     # Sử dụng tỷ lệ 6:3:1, tổng số dữ liệu là 100%
     total_size = len(partition)
     train_size = int(0.7 * total_size)
@@ -211,36 +143,31 @@ def train(net, trainloader, valloader, epochs, device):
 
 
 def imshow(images, labels, preds, classes, num_images=4, output_dir="output"):
-    
-    # Kiểm tra thư mục output đã tồn tại chưa
     if not os.path.exists(output_dir):
-        os.makedirs(output_dir)  # Tạo thư mục nếu chưa có
+        os.makedirs(output_dir)  
     
-    # Chọn num_images ngẫu nhiên
+
     fig = plt.figure(figsize=(12, 6))
     for i in range(num_images):
         ax = fig.add_subplot(2, 3, i+1)
-        img = images[i].numpy().transpose((1, 2, 0))  # chuyển ảnh về dạng HWC từ CHW
+        img = images[i].numpy().transpose((1, 2, 0))  
         ax.imshow(img, cmap='gray')
         
-        true_label = classes[labels[i]]  # Nhãn thực tế
-        pred_label = classes[preds[i]]  # Nhãn dự đoán
+        true_label = classes[labels[i]]  
+        pred_label = classes[preds[i]]  
         
-        # Đặt tiêu đề với nhãn thực tế và dự đoán
         ax.set_title(f"True: {true_label}\nPred: {pred_label}")
-        ax.axis('off')  # Tắt trục
+        ax.axis('off')
         
-    # Lưu hình ảnh dưới dạng PNG trong thư mục output
     output_path = os.path.join(output_dir, "real_img_predictions.png")
     plt.tight_layout()
     plt.savefig(output_path)
-    plt.close()  # Đóng để giải phóng bộ nhớ
+    plt.close()  
 
-# Giả sử `trainloader` là dataloader của bạn và `model` là mô hình
+
 def display_predictions(model, testloader, device, output_dir="output"):
-    model.eval()  # Đặt mô hình ở chế độ evaluation
+    model.eval()  
     
-    # Lấy batch đầu tiên từ testloader
     dataiter = iter(testloader)
     batch = next(dataiter)
     images, labels = batch["image"], batch["label"]
