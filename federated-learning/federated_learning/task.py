@@ -28,7 +28,7 @@ class Net(nn.Module):
         # Với ảnh đầu vào 28x28, sau 2 lớp conv với stride=2, kích thước feature map sẽ là 7x7
         self.fc = nn.Linear(128 * 7 * 7, 10)
         # Định nghĩa dropout với tỷ lệ 0.3
-        self.dropout = nn.Dropout(0.7) 
+        self.dropout = nn.Dropout(0.4) 
         # Định nghĩa LeakyReLU với negative_slope=0.2
         self.leaky_relu = nn.LeakyReLU(0.2)
 
@@ -48,7 +48,6 @@ class Net(nn.Module):
 
     
 fds = None  # Cache FederatedDataset
-
 def load_data(partition_id: int, num_partitions: int, num_samples: int = None):
     global fds
     if fds is None:
@@ -58,6 +57,7 @@ def load_data(partition_id: int, num_partitions: int, num_samples: int = None):
             partitioners={"train": partitioner},
         )
     partition = fds.load_partition(partition_id)
+    
     if num_samples is not None:
         partition = partition.select(range(min(num_samples, len(partition))))
 
@@ -142,11 +142,10 @@ def train(net, trainloader, valloader, epochs, device):
     return avg_trainloss, avg_val_loss, train_accuracy, val_accuracy
 
 
-def imshow(images, labels, preds, classes, num_images=4, output_dir="output"):
+def imshow(images, labels, preds, classes, num_images=4, output_dir="output/plot"):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)  
     
-
     fig = plt.figure(figsize=(12, 6))
     for i in range(num_images):
         ax = fig.add_subplot(2, 3, i+1)
@@ -165,7 +164,7 @@ def imshow(images, labels, preds, classes, num_images=4, output_dir="output"):
     plt.close()  
 
 
-def display_predictions(model, testloader, device, output_dir="output"):
+def display_predictions(model, testloader, device):
     model.eval()  
     
     dataiter = iter(testloader)
@@ -192,9 +191,9 @@ def display_predictions(model, testloader, device, output_dir="output"):
     classes = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
     
     # Hiển thị hình ảnh với dự đoán và lưu lại thành file PNG
-    imshow(images.cpu(), labels.cpu(), preds.cpu(), classes, output_dir=output_dir)
+    imshow(images.cpu(), labels.cpu(), preds.cpu(), classes)
     
-def metric_plot(train_loss, val_loss, train_acc, val_acc, output_dirs="output"):
+def metric_plot(train_loss, val_loss, train_acc, val_acc, output_dirs="output/plot"):
     if not os.path.exists(output_dirs):
         os.makedirs(output_dirs)
     
@@ -223,7 +222,7 @@ def metric_plot(train_loss, val_loss, train_acc, val_acc, output_dirs="output"):
 
     # Lưu figure với cả hai đồ thị
     plt.tight_layout()  # Điều chỉnh khoảng cách giữa các subplot
-    plt.savefig(os.path.join(output_dirs, "metrics_plot.png"))
+    plt.savefig(os.path.join(output_dirs, "classifiers_metrics_plot.png"))
     plt.close()
 
     print(f"Plots saved to {output_dirs}")

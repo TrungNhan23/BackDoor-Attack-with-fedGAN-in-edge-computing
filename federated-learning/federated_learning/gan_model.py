@@ -6,8 +6,9 @@ from torchvision.utils import save_image
 
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
+import torchvision.transforms as transforms
 import torchvision.utils as vutils
-
+import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
@@ -20,6 +21,7 @@ def weights_init_normal(m):
         torch.nn.init.normal_(m.weight.data, 1.0, 0.02)
         torch.nn.init.constant_(m.bias.data, 0.0)
 
+os.makedirs("output/images", exist_ok=True)
 
 class Generator(nn.Module):
     def __init__(self, latent_dim):
@@ -78,55 +80,111 @@ class Discriminator(nn.Module):
         validity = self.adv_layer(out)
         return validity
 
-
 def attacker_data(trainloader, target_labels=0):
+    # Định nghĩa transform tương tự như lúc load dữ liệu
+    transform = transforms.Compose([
+        transforms.Resize((32, 32)),  # đảm bảo kích thước (32, 32)
+        transforms.ToTensor(),
+        transforms.Normalize([0.5], [0.5])
+    ])
+    
     filtered_images = []
-    save_folder = "output/filtered_images_0"
-    
-    
-    if not os.path.exists(save_image):
-        os.makedirs(save_folder)
+    filtered_labels = []
+    count = 0
 
-    image_count = 0 
     for batch in trainloader: 
         images = batch["image"]
         labels = batch["label"]
 
         for img, label in zip(images, labels):
-            if label.item() == target_labels:  
-                filtered_images.append(img)
-                vutils.save_image(img, f"{save_folder}/image_{image_count}.png")
-                image_count += 1 
+            if label.item() == target_labels:
+                # Nếu img chưa được chuyển thành tensor, áp dụng transform trực tiếp.
+                # Nếu img đã là tensor, bạn có thể cần chuyển về PIL Image trước:
+                if not isinstance(img, torch.Tensor):
+                    img_transformed = transform(img)
+                else:
+                    # Chuyển tensor về PIL trước (giả sử img có định dạng (C, H, W))
+                    from torchvision.transforms.functional import to_pil_image
+                    img_pil = to_pil_image(img)
+                    img_transformed = transform(img_pil)
+                    
+                filtered_images.append(img_transformed)
+                filtered_labels.append(label)
+                count += 1
 
+    # Convert danh sách ảnh thành tensor
+    filtered_images = torch.stack(filtered_images)
+    filtered_labels = torch.stack(filtered_labels)
+    
+    # Tạo TensorDataset và DataLoader với batch_size = 8
+    target_dataset = torch.utils.data.TensorDataset(filtered_images, filtered_labels)
+    target_dataloader = torch.utils.data.DataLoader(target_dataset, batch_size=32, shuffle=True)
+    print(f'Saved {count} of 0 images')
+    return target_dataloader
+  
+  
+def plot_real_fake_images(real_images, fake_images, epoch, output_dir='output/result'):
+    """
+    Plot real and fake images side by side
 
-    return filtered_images 
-        
+    Args:
+    - real_images: Tensor of real images
+    - fake_images: Tensor of generated images
+    - epoch: Current training epoch
+    - output_dir: Directory to save comparison plots
+    """
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
 
-def gan_train(generator, discriminator, attack_data, dataloader, n_epochs = 20, latent_dim = 100):
-    # Loss function
-     
+    # Select up to 8 images
+    num_images = min(8, real_images.size(0), fake_images.size(0))
+
+    # Create a figure with subplots
+    fig, axs = plt.subplots(2, num_images, figsize=(15, 6))
+    plt.subplots_adjust(wspace=0.1, hspace=0.1)
+
+    # Plot real images (first row)
+    for i in range(num_images):
+        img = real_images[i].cpu().detach().squeeze()
+        axs[0, i].imshow(img, cmap='gray')
+        axs[0, i].axis('off')
+
+    # Plot fake images (second row)
+    for i in range(num_images):
+        img = fake_images[i].cpu().detach().squeeze()
+        axs[1, i].imshow(img, cmap='gray')
+        axs[1, i].axis('off')
+
+    # Set titles
+    plt.suptitle(f'Real vs Generated Images - Epoch {epoch}')
+    axs[0, 0].text(-10, num_images/2, 'Real', rotation=90, va='center', ha='center')
+    axs[1, 0].text(-10, num_images/2, 'Fake', rotation=90, va='center', ha='center')
+
+    # Save the plot
+    plt.savefig(f'{output_dir}/real_vs_fake_epoch_{epoch}.png', bbox_inches='tight', dpi=300)
+    plt.close()
+  
+      
+def gan_train(generator, discriminator, target_data, n_epochs=5, latent_dim=100):
+    
     adversarial_loss = torch.nn.BCELoss()
-    cuda = True if torch.cuda.is_available() else False
-    if cuda:
+    if torch.cuda.is_available():
         generator.cuda()
         discriminator.cuda()
         adversarial_loss.cuda()
+    
+    optimizer_G = torch.optim.Adam(generator.parameters(), lr=0.0001, betas=(0.5, 0.999))
+    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=0.0001, betas=(0.5, 0.999))
+    
+    scheduler_G = torch.optim.lr_scheduler.ExponentialLR(optimizer_G, gamma=0.90)
+    scheduler_D = torch.optim.lr_scheduler.ExponentialLR(optimizer_D, gamma=0.90)
 
-    # Initialize weights
-    # generator.apply(weights_init_normal)
-    # discriminator.apply(weights_init_normal)
-
-    # Optimizers
-    optimizer_G = torch.optim.Adam(generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
-    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=0.001, betas=(0.5, 0.999))
-
-    Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
-
-    # ----------
-    #  Training
-    # ----------
+    Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
+    
+    g_losses = []
+    d_losses = []
     for epoch in range(n_epochs):
-        for i, (imgs, _) in enumerate(dataloader):
+        for i, (imgs, _) in enumerate(target_data):
 
             # Adversarial ground truths
             valid = Variable(Tensor(imgs.shape[0], 1).fill_(1.0), requires_grad=False)
@@ -166,17 +224,40 @@ def gan_train(generator, discriminator, attack_data, dataloader, n_epochs = 20, 
 
             d_loss.backward()
             optimizer_D.step()
-
+            
+            g_losses.append(g_loss)
+            d_losses.append(d_loss)
             print(
                 "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
-                % (epoch, n_epochs, i, len(dataloader), d_loss.item(), g_loss.item())
+                % (epoch, n_epochs, i, len(target_data), d_loss.item(), g_loss.item())
             )
 
-            
-            if not os.path.exists("images"):
-                os.makedirs("images")
-            
-            batches_done = epoch * len(dataloader) + i
-            if batches_done % 100 == 0:
-                save_image(gen_imgs.data[:25], "images/%d.png" % batches_done, nrow=5, normalize=True)
-    return g_loss, d_loss
+            batches_done = epoch * len(target_data) + i
+            if batches_done % 50 == 0:
+                save_image(gen_imgs.data[:25], "output/images/%d.png" % batches_done, nrow=5, normalize=True)
+        mean_g_loss = np.mean([loss.cpu().detach().item() for loss in g_losses])
+        mean_d_loss = np.mean([loss.cpu().detach().item() for loss in d_losses])
+    # scheduler_G.step()
+    # scheduler_D.step()
+    # current_lr_G = optimizer_G.param_groups[0]['lr']
+    # current_lr_D = optimizer_D.param_groups[0]['lr']
+    # print("Current learning rate G:", current_lr_G)
+    # print("Current learning rate D:", current_lr_D)
+    return mean_g_loss, mean_d_loss
+    # return np.mean(g_losses), np.mean(g_losses)
+
+
+def gan_metrics(g_loss, d_loss, output_dirs="output/plot"):
+    plt.figure(figsize=(10, 5))
+    plt.plot(g_loss, label='Generator Loss')
+    plt.plot(d_loss, label='Discriminator Loss')
+    plt.ylim(0.2, 2)
+    plt.xlabel('Iterations')
+    plt.ylabel('Loss')
+    plt.title('GAN Loss Metrics')
+    plt.legend()
+    plt.show()
+    plt.savefig(os.path.join(output_dirs, "gan_metrics_plot.png"))
+    plt.close()
+    
+        

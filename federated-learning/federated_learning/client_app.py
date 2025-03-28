@@ -19,13 +19,17 @@ from federated_learning.gan_model import (
     Discriminator, 
     weights_init_normal, 
     gan_train, 
-    attacker_data
+    attacker_data, 
+    gan_metrics
 )
 
 train_losses= []
 val_losses= []
 train_accuracy= []
 val_accuracy= []
+
+g_losses = []
+d_losses = []
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
@@ -83,7 +87,7 @@ class AttackerClient(NumPyClient):
             self.D.load_state_dict(checkpoint["D_state_dict"])
             print("Loaded GAN checkpoint.")
         else:
-            os.makedirs("tmp")
+            os.makedirs("tmp", exist_ok=True)
             self.G.apply(weights_init_normal)
             self.D.apply(weights_init_normal)
             print("No GAN checkpoint found. Using initialized weights.")        
@@ -112,15 +116,16 @@ class AttackerClient(NumPyClient):
             self.G, 
             self.D, 
             self.target_data, 
-            self.trainloader, 
-            self.valloader 
+            # self.trainloader
         )
         
+        self.save_checkpoint()
         train_losses.append(train_loss)
         val_losses.append(val_loss)
         train_accuracy.append(train_acc)
         val_accuracy.append(val_acc)
-        self.save_checkpoint()
+        g_losses.append(g_loss)
+        d_losses.append(d_loss)
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     
@@ -129,6 +134,7 @@ class AttackerClient(NumPyClient):
         set_weights(self.net, parameters)
         loss, accuracy = test(self.net, self.testloader, self.device)
         print(f"val_Loss: {loss:.4f} val_Accuracy: {accuracy:.4f}")
+        gan_metrics(g_losses, d_losses)
         metric_plot(train_losses, val_losses, train_accuracy, val_accuracy)
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
         
@@ -136,16 +142,18 @@ class AttackerClient(NumPyClient):
 def client_fn(context: Context):
     # Load model and data
     net = Net()
-    G = Generator()
+    G = Generator(100)
     D = Discriminator()
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
     local_epochs = context.run_config["local-epochs"]
-
+    
     if partition_id == 0: 
         print(f"Created attacker client with id: {partition_id}")
         target_data = attacker_data(trainloader, 0)
+        print("Số mẫu trong dataset:", len(target_data.dataset))
+        print("Số batch trong DataLoader:", len(target_data))
         return AttackerClient(G, D, net, target_data, trainloader, valloader, testloader, local_epochs).to_client()
     else: 
         print(f"Created victim client with id: {partition_id}")
