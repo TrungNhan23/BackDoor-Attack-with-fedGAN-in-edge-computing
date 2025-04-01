@@ -28,7 +28,7 @@ class Net(nn.Module):
         # Với ảnh đầu vào 28x28, sau 2 lớp conv với stride=2, kích thước feature map sẽ là 7x7
         self.fc = nn.Linear(128 * 7 * 7, 10)
         # Định nghĩa dropout với tỷ lệ 0.3
-        self.dropout = nn.Dropout(0.4) 
+        self.dropout = nn.Dropout(0.25) 
         # Định nghĩa LeakyReLU với negative_slope=0.2
         self.leaky_relu = nn.LeakyReLU(0.2)
 
@@ -171,7 +171,6 @@ def display_predictions(model, testloader, device):
     batch = next(dataiter)
     images, labels = batch["image"], batch["label"]
     
-    # Kiểm tra và chuyển images và labels thành tensor nếu cần
     if isinstance(images, torch.Tensor):
         images = images.to(device)
     else:
@@ -182,15 +181,12 @@ def display_predictions(model, testloader, device):
     else:
         raise TypeError(f"Labels must be tensor, but current type data is: {type(labels)}")
     
-    # Tiến hành dự đoán
     with torch.no_grad():
         outputs = model(images)
         _, preds = torch.max(outputs, 1)
     
-    # Các lớp của MNIST (hoặc tùy theo bài toán của bạn)
     classes = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
     
-    # Hiển thị hình ảnh với dự đoán và lưu lại thành file PNG
     imshow(images.cpu(), labels.cpu(), preds.cpu(), classes)
     
 def metric_plot(train_loss, val_loss, train_acc, val_acc, output_dirs="output/plot"):

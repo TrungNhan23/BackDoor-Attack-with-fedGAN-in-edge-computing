@@ -25,10 +25,10 @@ serverapp = "federated_learning.server_app:app"
 clientapp = "federated_learning.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 20
+num-server-rounds = 30
 fraction-fit = 1.0
 local-epochs = 1
-#have-attacker = True
+
 
 [tool.flwr.federations]
 default = "local-simulation"

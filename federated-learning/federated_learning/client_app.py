@@ -19,7 +19,8 @@ from federated_learning.gan_model import (
     Discriminator, 
     weights_init_normal, 
     gan_train, 
-    attacker_data, 
+    attacker_data,
+    attacker_data_no_filter, 
     gan_metrics
 )
 
@@ -103,20 +104,20 @@ class AttackerClient(NumPyClient):
         
     def fit(self, parameters, config):
         set_weights(self.net, parameters)
-        train_loss, val_loss, train_acc, val_acc = train(
-            self.net,
-            self.trainloader,
-            self.valloader,
-            self.local_epochs,
-            self.device,
-        )
-        
         #train the GAN
         g_loss, d_loss = gan_train(
             self.G, 
             self.D, 
             self.target_data, 
             # self.trainloader
+        )
+        
+        train_loss, val_loss, train_acc, val_acc = train(
+            self.net,
+            self.trainloader,
+            self.valloader,
+            self.local_epochs,
+            self.device,
         )
         
         self.save_checkpoint()
@@ -148,10 +149,11 @@ def client_fn(context: Context):
     num_partitions = context.node_config["num-partitions"]
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
     local_epochs = context.run_config["local-epochs"]
-    
+    target_digit = 0
     if partition_id == 0: 
         print(f"Created attacker client with id: {partition_id}")
-        target_data = attacker_data(trainloader, 0)
+        target_data = attacker_data(trainloader, target_digit)
+        # target_data = attacker_data_no_filter(trainloader)
         print("Số mẫu trong dataset:", len(target_data.dataset))
         print("Số batch trong DataLoader:", len(target_data))
         return AttackerClient(G, D, net, target_data, trainloader, valloader, testloader, local_epochs).to_client()

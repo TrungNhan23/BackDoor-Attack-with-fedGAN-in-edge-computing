@@ -10,6 +10,11 @@ import torch
 from torchvision import transforms, datasets
 from torch.utils.data import Subset, DataLoader
 
+from federated_learning.gan_model import (
+    Generator, 
+    Discriminator
+)
+
 def load_centralized_data(batch_size: int):
     # Định nghĩa transform cho MNIST
     transform = transforms.Compose([
@@ -62,7 +67,8 @@ def server_fn(context: Context):
     # Initialize model parameters
     global_model = Net()
     summary(Net(), input_size=(32, 1, 28, 28))
-    
+    summary(Generator(100), input_size=(32, 100))
+    summary(Discriminator(), input_size=(64, 1, 32, 32))
     
     central_loader = load_centralized_data(batch_size=32)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
