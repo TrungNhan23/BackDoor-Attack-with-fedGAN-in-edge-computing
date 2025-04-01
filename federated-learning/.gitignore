@@ -1,5 +1,5 @@
 # Byte-compiled / optimized / DLL files
-__pycache__/
+federated_learning/__pycache__/
 *.py[cod]
 *$py.class
 
@@ -14,12 +14,15 @@ dist/
 downloads/
 eggs/
 .eggs/
+data/
 lib/
 lib64/
 parts/
 sdist/
 var/
 wheels/
+tmp/
+output/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
