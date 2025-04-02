@@ -29,7 +29,7 @@ def load_centralized_data(batch_size: int):
 
 def pretrain_on_server(model, train_loader, device, epochs=5, learning_rate=1e-3):
     model.to(device)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss() 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     model.train()
     for epoch in range(epochs):
