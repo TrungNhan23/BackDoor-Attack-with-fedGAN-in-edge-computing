@@ -4,6 +4,7 @@ import torch
 from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context
 import os
+import json
 from federated_learning.task import (
     Net,
     load_data,
@@ -21,6 +22,7 @@ from federated_learning.gan_model import (
     gan_train, 
     attacker_data,
     attacker_data_no_filter, 
+    merge_data,
     gan_metrics
 )
 
@@ -45,6 +47,8 @@ class FlowerClient(NumPyClient):
 
     def fit(self, parameters, config):
         set_weights(self.net, parameters)
+        cur_round = config["current_round"]
+        print(f'The current round is: {cur_round}')
         train_loss, val_loss, train_acc, val_acc = train(
             self.net,
             self.trainloader,
@@ -105,16 +109,16 @@ class AttackerClient(NumPyClient):
     def fit(self, parameters, config):
         set_weights(self.net, parameters)
         #train the GAN
-        g_loss, d_loss = gan_train(
+        g_loss, d_loss, fake_imgs = gan_train(
             self.G, 
             self.D, 
-            self.target_data, 
-            # self.trainloader
+            self.target_data
         )
-        
+        dataloader = merge_data(self.trainloader, fake_imgs)
         train_loss, val_loss, train_acc, val_acc = train(
             self.net,
-            self.trainloader,
+            # self.trainloader,
+            dataloader,
             self.valloader,
             self.local_epochs,
             self.device,
@@ -127,6 +131,12 @@ class AttackerClient(NumPyClient):
         val_accuracy.append(val_acc)
         g_losses.append(g_loss)
         d_losses.append(d_loss)
+        print("Length of train_losses:", len(train_losses))
+        print("Length of val_losses:", len(val_losses))
+        print("Length of train_accuracy:", len(train_accuracy))
+        print("Length of val_accuracy:", len(val_accuracy))
+        print("Length of g_losses:", len(g_losses))
+        print("Length of d_losses:", len(d_losses))
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     
@@ -149,7 +159,7 @@ def client_fn(context: Context):
     num_partitions = context.node_config["num-partitions"]
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
     local_epochs = context.run_config["local-epochs"]
-    target_digit = 0
+    target_digit = 1
     if partition_id == 0: 
         print(f"Created attacker client with id: {partition_id}")
         target_data = attacker_data(trainloader, target_digit)

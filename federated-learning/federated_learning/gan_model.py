@@ -4,10 +4,9 @@ import numpy as np
 
 from torchvision.utils import save_image
 from torchvision.transforms.functional import to_pil_image
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torch.autograd import Variable
 import torchvision.transforms as transforms
-import torchvision.utils as vutils
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.nn.functional as F
@@ -79,6 +78,62 @@ class Discriminator(nn.Module):
         out = out.view(out.shape[0], -1)
         validity = self.adv_layer(out)
         return validity
+    
+    
+    
+class DictDataset(Dataset):
+    def __init__(self, images, labels):
+        self.images = images
+        self.labels = labels
+        
+    def __len__(self):
+        return self.images.shape[0]
+    
+    def __getitem__(self, idx):
+        return {"image": self.images[idx], "label": self.labels[idx]}
+
+def merge_data(trainloader, fake_images, batch_size=32):
+    # Lấy một batch từ trainloader
+    batch = next(iter(trainloader))
+    
+    # Kiểm tra định dạng batch: nếu dict thì lấy theo key, nếu tuple thì lấy theo vị trí
+    if isinstance(batch, dict):
+        real_images = batch['image']
+        real_labels = batch['label']
+    elif isinstance(batch, (list, tuple)) and len(batch) == 2:
+        real_images, real_labels = batch
+    else:
+        raise ValueError("Định dạng batch không được hỗ trợ.")
+
+    # Lấy kích thước batch thật
+    real_batch_size = real_images.shape[0]
+    
+    # Chuyển fake_images về cùng thiết bị với real_images
+    fake_images = fake_images.to(real_images.device).detach()
+
+    # Nếu cần, đảm bảo fake_images có số kênh giống với real_images
+    if fake_images.shape[1] != real_images.shape[1]:
+        fake_images = fake_images.repeat(1, real_images.shape[1], 1, 1)
+
+    # Fake labels: chọn ngẫu nhiên từ tập {6, 8} cho số lượng fake_images
+    fake_labels = torch.tensor([7, 7], device=real_images.device)[
+        torch.randint(0, 2, (fake_images.shape[0],), device=real_images.device)
+    ]
+
+    # Kiểm tra số lượng ảnh thật có đủ để thay thế
+    if real_batch_size < fake_images.shape[0]:
+        raise ValueError("Batch của ảnh thật nhỏ hơn số ảnh giả cần thay thế.")
+    
+    merged_images = torch.cat([real_images[:real_batch_size - fake_images.shape[0]], fake_images], dim=0)
+    merged_labels = torch.cat([real_labels[:real_batch_size - fake_images.shape[0]], fake_labels], dim=0)
+
+    # Tạo dataset dạng dict
+    merged_dataset = DictDataset(merged_images, merged_labels)
+    merged_dataloader = DataLoader(merged_dataset, batch_size=batch_size, shuffle=True)
+
+    return merged_dataloader
+
+
 
 def attacker_data(trainloader, target_labels=0):
     transform = transforms.Compose([
@@ -198,10 +253,16 @@ def plot_real_fake_images(real_images, fake_images, epoch, output_dir='output/re
     # Save the plot
     plt.savefig(f'{output_dir}/real_vs_fake_epoch_{epoch}.png', bbox_inches='tight', dpi=300)
     plt.close()
-  
+
+def generate_adversarial_noise(model, images, epsilon=0.02):
+    images = images.clone().detach().requires_grad_(True)
+    outputs = model(images)
+    loss = F.binary_cross_entropy_with_logits(outputs, torch.ones_like(outputs))
+    loss.backward()
+    adversarial_noise = epsilon * images.grad.sign()
+    return adversarial_noise
       
-def gan_train(generator, discriminator, target_data, n_epochs=9, latent_dim=100):
-    
+def gan_train(generator, discriminator, target_data, merge_samples=400, n_epochs=9, latent_dim=100):
     adversarial_loss = torch.nn.BCELoss()
     if torch.cuda.is_available():
         generator.cuda()
@@ -262,22 +323,25 @@ def gan_train(generator, discriminator, target_data, n_epochs=9, latent_dim=100)
             
             g_losses.append(g_loss.item())
             d_losses.append(d_loss.item())
-            print(
-                "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
-                % (epoch, n_epochs, i, len(target_data), d_loss.item(), g_loss.item())
-            )
+            # print(
+            #     "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
+            #     % (epoch, n_epochs, i, len(target_data), d_loss.item(), g_loss.item())
+            # )
 
             batches_done = epoch * len(target_data) + i
             if batches_done % 30 == 0:
                 save_image(gen_imgs.data[:25], "output/images/%d.png" % batches_done, nrow=5, normalize=True)
         scheduler_G.step()
         scheduler_D.step()
+    gen_imgs_resized = torch.nn.functional.interpolate(gen_imgs, size=(28, 28), mode='bilinear', align_corners=False)
+    selected_images = gen_imgs_resized[:merge_samples]
+    
     current_lr_G = optimizer_G.param_groups[0]['lr']
     current_lr_D = optimizer_D.param_groups[0]['lr']
     print(f"Epoch {epoch + 1}: Generator LR = {current_lr_G}, Discriminator LR = {current_lr_D}")
     mean_g_loss = np.mean(g_losses)
     mean_d_loss = np.mean(d_losses)
-    return mean_g_loss, mean_d_loss
+    return mean_g_loss, mean_d_loss, selected_images
     # return g_losses, d_losses
 
 

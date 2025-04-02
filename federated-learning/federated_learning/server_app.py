@@ -4,12 +4,12 @@ from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from torchinfo import summary
-from federated_learning.task import Net, get_weights, train, load_data
+from federated_learning.task import Net, get_weights
 import torch.nn as nn
 import torch
 from torchvision import transforms, datasets
 from torch.utils.data import Subset, DataLoader
-
+import json
 from federated_learning.gan_model import (
     Generator, 
     Discriminator
@@ -21,9 +21,7 @@ def load_centralized_data(batch_size: int):
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,))
     ])
-    # Tải toàn bộ tập train của MNIST
     full_train_dataset = datasets.MNIST(root="./data", train=True, download=True, transform=transform)
-    # Lấy một tập con gồm 3000 mẫu bất kỳ
     indices = torch.randperm(len(full_train_dataset))[:1000]
     subset_dataset = Subset(full_train_dataset, indices)
     train_loader = DataLoader(subset_dataset, batch_size=batch_size, shuffle=True)
@@ -59,6 +57,12 @@ def pretrain_on_server(model, train_loader, device, epochs=5, learning_rate=1e-3
     return model
 
 
+def fit_config(server_round: int):
+    config = {
+        "current_round": server_round,
+    }
+    return config
+
 def server_fn(context: Context):
     # Read from config
     num_rounds = context.run_config["num-server-rounds"]
@@ -73,7 +77,7 @@ def server_fn(context: Context):
     central_loader = load_centralized_data(batch_size=32)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
-    pretrain_epochs = context.run_config.get("pretrain-epochs", 5)  # số epoch pretrain, mặc định 5
+    pretrain_epochs = context.run_config.get("pretrain-epochs", 5) 
     print("Pre-training global model on server...")
     global_model = pretrain_on_server(global_model, central_loader, device, epochs=pretrain_epochs, learning_rate=1e-3)
     
@@ -86,6 +90,8 @@ def server_fn(context: Context):
         fraction_fit=fraction_fit,
         fraction_evaluate=1.0,
         initial_parameters=parameters,
+        on_fit_config_fn=fit_config, 
+        
     )
     config = ServerConfig(num_rounds=num_rounds)
 

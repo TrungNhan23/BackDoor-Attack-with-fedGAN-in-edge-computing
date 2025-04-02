@@ -10,7 +10,6 @@ print("CUDA Version:", torch.version.cuda)
 from collections import OrderedDict
 import os
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader, random_split
 from torchvision.transforms import Compose, Normalize, ToTensor
 from flwr_datasets import FederatedDataset
@@ -27,8 +26,7 @@ class Net(nn.Module):
         # Lớp fully connected (Dense) sau khi flatten
         # Với ảnh đầu vào 28x28, sau 2 lớp conv với stride=2, kích thước feature map sẽ là 7x7
         self.fc = nn.Linear(128 * 7 * 7, 10)
-        # Định nghĩa dropout với tỷ lệ 0.3
-        self.dropout = nn.Dropout(0.25) 
+        self.dropout = nn.Dropout(0.5) 
         # Định nghĩa LeakyReLU với negative_slope=0.2
         self.leaky_relu = nn.LeakyReLU(0.2)
 
@@ -91,7 +89,7 @@ def train(net, trainloader, valloader, epochs, device):
     """Train the model on the training set and validate after each epoch."""
     net.to(device)  # move model to GPU if available
     criterion = torch.nn.CrossEntropyLoss().to(device)
-    optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
+    optimizer = torch.optim.SGD(net.parameters(), lr=0.0099, momentum=0.9)
     
     for epoch in range(epochs):
         # Training phase
@@ -142,26 +140,37 @@ def train(net, trainloader, valloader, epochs, device):
     return avg_trainloss, avg_val_loss, train_accuracy, val_accuracy
 
 
-def imshow(images, labels, preds, classes, num_images=4, output_dir="output/plot"):
+
+def imshow(images, labels, preds, classes, num_images=6, output_dir="output/plot"):
     if not os.path.exists(output_dir):
-        os.makedirs(output_dir)  
+        os.makedirs(output_dir)
     
     fig = plt.figure(figsize=(12, 6))
-    for i in range(num_images):
-        ax = fig.add_subplot(2, 3, i+1)
-        img = images[i].numpy().transpose((1, 2, 0))  
+    
+    zero_indices = torch.where(labels == 1)[0]  # Lấy chỉ mục của ảnh có label = 0
+    
+    if len(zero_indices) == 0:
+        print("Không có ảnh nào có nhãn 0!")
+        return
+
+    num_images = min(num_images, len(zero_indices))
+
+    for i in range(num_images):  
+        idx = zero_indices[i]  
+        ax = fig.add_subplot(2, 3, i+1) 
+        img = images[idx].numpy().transpose((1, 2, 0))  
         ax.imshow(img, cmap='gray')
         
-        true_label = classes[labels[i]]  
-        pred_label = classes[preds[i]]  
+        true_label = classes[labels[idx].item()] 
+        pred_label = classes[preds[idx].item()] 
         
         ax.set_title(f"True: {true_label}\nPred: {pred_label}")
         ax.axis('off')
-        
+
     output_path = os.path.join(output_dir, "real_img_predictions.png")
     plt.tight_layout()
     plt.savefig(output_path)
-    plt.close()  
+    plt.close()
 
 
 def display_predictions(model, testloader, device):
