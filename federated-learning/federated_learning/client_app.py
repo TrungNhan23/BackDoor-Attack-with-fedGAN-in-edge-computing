@@ -12,7 +12,6 @@ from federated_learning.task import (
     set_weights,
     train,
     test,
-    metric_plot, 
 )
 
 from federated_learning.gan_model import (
@@ -23,13 +22,14 @@ from federated_learning.gan_model import (
     attacker_data,
     attacker_data_no_filter, 
     merge_data,
-    gan_metrics
+    gan_metrics,
+    
+    
+    
+    create_adversarial_samples,
+    merge_adversarial_data,
 )
 
-train_losses= []
-val_losses= []
-train_accuracy= []
-val_accuracy= []
 
 g_losses = []
 d_losses = []
@@ -47,8 +47,6 @@ class FlowerClient(NumPyClient):
 
     def fit(self, parameters, config):
         set_weights(self.net, parameters)
-        cur_round = config["current_round"]
-        print(f'The current round is: {cur_round}')
         train_loss, val_loss, train_acc, val_acc = train(
             self.net,
             self.trainloader,
@@ -56,18 +54,11 @@ class FlowerClient(NumPyClient):
             self.local_epochs,
             self.device,
         )
-        # metric_plot(train_loss, val_loss, train_acc, val_acc)
-        train_losses.append(train_loss)
-        val_losses.append(val_loss)
-        train_accuracy.append(train_acc)
-        val_accuracy.append(val_acc)
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     def evaluate(self, parameters, config):
         set_weights(self.net, parameters)
         loss, accuracy = test(self.net, self.testloader, self.device)
-        print(f"val_Loss: {loss:.4f} val_Accuracy: {accuracy:.4f}")
-        metric_plot(train_losses, val_losses, train_accuracy, val_accuracy)
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
 
 class AttackerClient(NumPyClient):
@@ -109,12 +100,22 @@ class AttackerClient(NumPyClient):
     def fit(self, parameters, config):
         set_weights(self.net, parameters)
         #train the GAN
+        cur_round = config["current_round"]
+        print(f'The current round is: {cur_round}')
         g_loss, d_loss, fake_imgs = gan_train(
             self.G, 
             self.D, 
-            self.target_data
+            self.target_data, 
+            cur_round
         )
         dataloader = merge_data(self.trainloader, fake_imgs)
+        # print(f'length of dataloader after poison: {len(dataloader)}')
+        if dataloader is not None:
+            pass
+            # print(f'length of dataloader after poison: {len(dataloader)}')
+        else:
+            print("Dataloader is None.")
+            dataloader = self.trainloader
         train_loss, val_loss, train_acc, val_acc = train(
             self.net,
             # self.trainloader,
@@ -125,18 +126,10 @@ class AttackerClient(NumPyClient):
         )
         
         self.save_checkpoint()
-        train_losses.append(train_loss)
-        val_losses.append(val_loss)
-        train_accuracy.append(train_acc)
-        val_accuracy.append(val_acc)
         g_losses.append(g_loss)
         d_losses.append(d_loss)
-        print("Length of train_losses:", len(train_losses))
-        print("Length of val_losses:", len(val_losses))
-        print("Length of train_accuracy:", len(train_accuracy))
-        print("Length of val_accuracy:", len(val_accuracy))
-        print("Length of g_losses:", len(g_losses))
-        print("Length of d_losses:", len(d_losses))
+        # print("Length of g_losses:", len(g_losses))
+        # print("Length of d_losses:", len(d_losses))
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     
@@ -144,9 +137,9 @@ class AttackerClient(NumPyClient):
         #evaluate the GAN here
         set_weights(self.net, parameters)
         loss, accuracy = test(self.net, self.testloader, self.device)
-        print(f"val_Loss: {loss:.4f} val_Accuracy: {accuracy:.4f}")
-        gan_metrics(g_losses, d_losses)
-        metric_plot(train_losses, val_losses, train_accuracy, val_accuracy)
+        # print(f"val_Loss: {loss:.4f} val_Accuracy: {accuracy:.4f}")
+        # gan_metrics(g_losses, d_losses)
+        # metric_plot(train_losses, val_losses, train_accuracy, val_accuracy)
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
         
 
@@ -159,7 +152,7 @@ def client_fn(context: Context):
     num_partitions = context.node_config["num-partitions"]
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
     local_epochs = context.run_config["local-epochs"]
-    target_digit = 1
+    target_digit = 9
     if partition_id == 0: 
         print(f"Created attacker client with id: {partition_id}")
         target_data = attacker_data(trainloader, target_digit)

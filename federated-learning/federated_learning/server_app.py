@@ -4,19 +4,22 @@ from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from torchinfo import summary
-from federated_learning.task import Net, get_weights
+from federated_learning.task import Net, get_weights, display_predictions
 import torch.nn as nn
 import torch
+import numpy as np
 from torchvision import transforms, datasets
 from torch.utils.data import Subset, DataLoader
 import json
+import matplotlib.pyplot as plt
+import os
+from typing import List, Dict, Tuple, Optional
 from federated_learning.gan_model import (
     Generator, 
     Discriminator
 )
 
 def load_centralized_data(batch_size: int):
-    # Định nghĩa transform cho MNIST
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,))
@@ -63,6 +66,126 @@ def fit_config(server_round: int):
     }
     return config
 
+def plot_accuracy(history, output_dirs="output/plot"):
+    """Hàm vẽ đồ thị accuracy và accuracy_wrong_9_as_8"""
+    if not os.path.exists(output_dirs):
+        os.makedirs(output_dirs, exist_ok=True)
+        
+    if len(history["accuracy"]) == 0 or len(history["accuracy_wrong_9_as_8"]) == 0:
+        print("No accuracy data to plot.")
+        return
+
+    rounds, accuracies = zip(*history["accuracy"])
+    _, accuracies_wrong_9_as_8 = zip(*history["accuracy_wrong_9_as_8"])
+
+    plt.figure(figsize=(10, 5))
+    
+    # Vẽ đường accuracy
+    plt.plot(rounds, accuracies, color='b', label='Accuracy')
+    # Vẽ đường accuracy_wrong_9_as_8
+    plt.plot(rounds, accuracies_wrong_9_as_8, color='r', label='Accuracy Wrong 9 as 8')
+
+    plt.ylim(0.0, 1)
+    plt.xlabel('Rounds')
+    plt.ylabel('Accuracy')
+    plt.title('Federated Learning Accuracy Over Rounds')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.savefig(os.path.join(output_dirs, "metrics_plot.png"))
+    plt.close()
+
+history = {
+    "accuracy": [],
+    "accuracy_wrong_9_as_8": []  # Lưu history của accuracy_wrong_9_as_8
+}
+
+
+def weighted_average(metrics):
+    """Aggregate accuracy from clients using weighted average."""
+    # print(f"Weighted average called with metrics: {metrics}")
+    accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
+    num_examples_total = sum(num_examples for num_examples, _ in metrics)
+    weighted_accuracy = sum(accuracies) / num_examples_total
+    return {"accuracy": weighted_accuracy}  # Return as a dictionary
+
+
+def get_evaluate_fn(model):
+    """Return an evaluation function for server-side evaluation using PyTorch and MNIST."""
+
+    # Load MNIST dataset
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+    full_dataset = datasets.MNIST(root="./data", train=True, download=True, transform=transform)
+    
+    # Use the last 1000 images for evaluation
+    eval_dataset = Subset(full_dataset, range(len(full_dataset) - 1000, len(full_dataset)))
+    eval_loader = DataLoader(eval_dataset, batch_size=32, shuffle=False)
+
+    # Define the evaluation function
+    def evaluate(
+        server_round: int, parameters: List[np.ndarray], config: Dict[str, float]
+    ) -> Optional[Tuple[float, Dict[str, float]]]:
+        global history
+        # Update model parameters
+        state_dict = {k: torch.tensor(v) for k, v in zip(model.state_dict().keys(), parameters)}
+        model.load_state_dict(state_dict)
+        model.eval()
+
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        model.to(device)
+
+        # Evaluate the model
+        total_loss = 0.0
+        correct = 0
+        total = 0
+        wrong_9_as_8 = 0  # Số lần label 9 bị dự đoán thành 8
+        total_9 = 0  # Tổng số mẫu có label 9
+        criterion = nn.CrossEntropyLoss()
+
+        with torch.no_grad():
+
+            for images, labels in eval_loader:
+                images, labels = images.to(device), labels.to(device)
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+                total_loss += loss.item() * images.size(0)
+
+                # Compute accuracy
+                _, predicted = torch.max(outputs, 1)
+                correct += (predicted == labels).sum().item()
+                total += labels.size(0)
+
+                # Check for label 9 predicted as 8
+                wrong_9_as_8 += ((labels == 9) & (predicted == 8)).sum().item()
+                total_9 += (labels == 9).sum().item()  # Tính tổng số mẫu có label 9
+
+            avg_loss = total_loss / total
+            accuracy = correct / total
+
+            # Nếu có mẫu label 9 thì tính tỷ lệ
+            if total_9 > 0:
+                accuracy_wrong_9_as_8 = wrong_9_as_8 / total_9  # Chia cho tổng số mẫu có label là 9
+                print(f"Accuracy wrong 9 as 8 at round {server_round}: {accuracy_wrong_9_as_8}")
+            else:
+                accuracy_wrong_9_as_8 = 0  # Nếu không có mẫu label 9 thì tỷ lệ là 0
+
+            history["accuracy"].append((server_round, accuracy))
+            history["accuracy_wrong_9_as_8"].append((server_round, accuracy_wrong_9_as_8))
+            
+            # print(history["accuracy"])
+            # print(history["accuracy_wrong_9_as_8"])
+        # Call plot_accuracy every 5 rounds
+        if server_round % 1 == 0:
+            plot_accuracy(history)
+            display_predictions(model, eval_loader, 9, device)
+
+        return avg_loss, {"accuracy": accuracy}
+
+    return evaluate
+
 def server_fn(context: Context):
     # Read from config
     num_rounds = context.run_config["num-server-rounds"]
@@ -79,7 +202,7 @@ def server_fn(context: Context):
     
     pretrain_epochs = context.run_config.get("pretrain-epochs", 5) 
     print("Pre-training global model on server...")
-    global_model = pretrain_on_server(global_model, central_loader, device, epochs=pretrain_epochs, learning_rate=1e-3)
+    global_model = pretrain_on_server(global_model, central_loader, device, epochs=pretrain_epochs, learning_rate=1e-2)
     
     
     ndarrays = get_weights(global_model)
@@ -91,7 +214,8 @@ def server_fn(context: Context):
         fraction_evaluate=1.0,
         initial_parameters=parameters,
         on_fit_config_fn=fit_config, 
-        
+        evaluate_metrics_aggregation_fn=weighted_average, 
+        evaluate_fn=get_evaluate_fn(global_model)
     )
     config = ServerConfig(num_rounds=num_rounds)
 
