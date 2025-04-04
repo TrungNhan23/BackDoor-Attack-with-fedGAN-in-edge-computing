@@ -26,7 +26,7 @@ class Generator(nn.Module):
     def __init__(self, latent_dim):
         super(Generator, self).__init__()
 
-        self.init_size = 32 // 4
+        self.init_size = 28 // 4
         self.latent_dim = latent_dim
         self.channels = 1
         self.l1 = nn.Sequential(nn.Linear(self.latent_dim, 128 * self.init_size ** 2))
@@ -79,120 +79,10 @@ class Discriminator(nn.Module):
         validity = self.adv_layer(out)
         return validity
 
-class DictDataset(Dataset):
-    def __init__(self, images, labels):
-        self.images = images
-        self.labels = labels
-        
-    def __len__(self):
-        return self.images.shape[0]
-    
-    def __getitem__(self, idx):
-        return {"image": self.images[idx], "label": self.labels[idx]}
-
-# def merge_data(trainloader, fake_images, batch_size=32):
-#     if fake_images is None:
-#         return None
-#     print(f'length of dataloader real: {len(trainloader)}')
-#     print(f'length of dataloader fake: {len(fake_images)}')
-#     all_real_images = []
-#     all_real_labels = []
-
-#     # Iterate through the entire trainloader to collect all real images and labels
-#     for batch in trainloader:
-#         if isinstance(batch, dict):
-#             real_images = batch['image']
-#             real_labels = batch['label']
-#         elif isinstance(batch, (list, tuple)) and len(batch) == 2:
-#             real_images, real_labels = batch
-#         else:
-#             raise ValueError("Unsupported batch format.")
-
-#         all_real_images.append(real_images)
-#         all_real_labels.append(real_labels)
-
-#     # Concatenate all real images and labels
-#     all_real_images = torch.cat(all_real_images, dim=0)
-#     all_real_labels = torch.cat(all_real_labels, dim=0)
-
-#     # Ensure fake_images are on the same device as real_images
-#     fake_images = fake_images.to(all_real_images.device).detach()
-
-#     # Ensure fake_images have the same number of channels as real_images
-#     if fake_images.shape[1] != all_real_images.shape[1]:
-#         fake_images = fake_images.repeat(1, all_real_images.shape[1], 1, 1)
-
-#     # Create fake labels (e.g., target label 7 for all fake images)
-#     fake_labels_target = [8]
-#     # fake_labels_target = [7]
-#     fake_labels = torch.tensor(fake_labels_target, device=all_real_images.device)[
-#         torch.randint(0, len(fake_labels_target), (fake_images.shape[0],), device=all_real_images.device)
-#     ]
-
-#     # Merge fake images and labels with the real dataset
-#     merged_images = torch.cat([all_real_images, fake_images], dim=0)
-#     merged_labels = torch.cat([all_real_labels, fake_labels], dim=0)
-
-#     # Create a new dataset and DataLoader
-#     merged_dataset = DictDataset(merged_images, merged_labels)
-#     merged_dataloader = DataLoader(merged_dataset, batch_size=batch_size, shuffle=True)
-#     print(f'length of dataloader after poison: {len(merged_dataloader)}')
-#     return merged_dataloader
-
-def merge_data(trainloader, fake_images, batch_size=16):
-    if fake_images is None:
-        return None
-
-    all_real_images = []
-    all_real_labels = []
-
-    # Iterate through the entire trainloader to collect all real images and labels
-    for batch in trainloader:
-        if isinstance(batch, dict):
-            real_images = batch['image']
-            real_labels = batch['label']
-        elif isinstance(batch, (list, tuple)) and len(batch) == 2:
-            real_images, real_labels = batch
-        else:
-            raise ValueError("Unsupported batch format.")
-
-        all_real_images.append(real_images)
-        all_real_labels.append(real_labels)
-
-    # Concatenate all real images and labels
-    all_real_images = torch.cat(all_real_images, dim=0)
-    all_real_labels = torch.cat(all_real_labels, dim=0)
-
-    # Ensure fake_images are on the same device as real_images
-    fake_images = fake_images.to(all_real_images.device).detach()
-
-    # Ensure fake_images have the same number of channels as real_images
-    if fake_images.shape[1] != all_real_images.shape[1]:
-        fake_images = fake_images.repeat(1, all_real_images.shape[1], 1, 1)
-
-    # Create fake labels (e.g., target label 7 for all fake images)
-    fake_labels_target = [8]  # Or whatever label you want for fake images
-    fake_labels = torch.tensor(fake_labels_target, device=all_real_images.device)[
-        torch.randint(0, len(fake_labels_target), (fake_images.shape[0],), device=all_real_images.device)
-    ]
-
-    # Merge fake images and labels with the real dataset
-    merged_images = torch.cat([all_real_images, fake_images], dim=0)
-    merged_labels = torch.cat([all_real_labels, fake_labels], dim=0)
-
-    # Check if the total number of images is correct (real + fake)
-    print(f"Total number of images after merge: {len(merged_images)}")
-    
-    # Create a new dataset and DataLoader
-    merged_dataset = DictDataset(merged_images, merged_labels)
-    merged_dataloader = DataLoader(merged_dataset, batch_size=batch_size, shuffle=True)
-
-    return merged_dataloader
-
 
 def attacker_data(trainloader, target_labels=0):
     transform = transforms.Compose([
-        transforms.Resize((32, 32)),  # đảm bảo kích thước (32, 32)
+        transforms.Resize((28, 28)),  # đảm bảo kích thước (32, 32)
         transforms.ToTensor(),
         transforms.Normalize([0.5], [0.5])
     ])
@@ -211,7 +101,6 @@ def attacker_data(trainloader, target_labels=0):
                     img_transformed = transform(img)
                 else:
                     # Chuyển tensor về PIL trước (giả sử img có định dạng (C, H, W))
-                    
                     img_pil = to_pil_image(img)
                     img_transformed = transform(img_pil)
                     
@@ -268,123 +157,146 @@ def attacker_data_no_filter(trainloader):
     return target_dataloader  
 
   
-def plot_real_fake_images(real_images, fake_images, epoch, output_dir='output/result'):
-    # Ensure output directory exists
+def plot_real_fake_images(model, real_images, fake_images, output_dir='output/result'):
+    # Kiểm tra thiết bị (GPU nếu có, nếu không thì dùng CPU)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Đảm bảo model và dữ liệu đầu vào đều ở trên cùng một thiết bị
+    model.to(device)
+    real_images = real_images.to(device)
+    fake_images = fake_images.to(device)
+
+    # Đảm bảo mô hình ở chế độ eval
+    model.eval()
+    
+    # Dừng tính gradient
+    with torch.no_grad(): 
+        # Tính đầu ra của ảnh thật và giả
+        output_real = model(real_images)
+        output_fake = model(fake_images)
+
+        # Dự đoán cho ảnh thật và giả
+        predicted_real = torch.argmax(output_real, dim=1)
+        predicted_fake = torch.argmax(output_fake, dim=1)
+        
+    # Đảm bảo thư mục lưu kết quả tồn tại
     os.makedirs(output_dir, exist_ok=True)
 
-    # Select up to 8 images
+    # Lựa chọn tối đa 8 ảnh
     num_images = min(8, real_images.size(0), fake_images.size(0))
 
-    # Create a figure with subplots
+    # Tạo một figure với subplots
     fig, axs = plt.subplots(2, num_images, figsize=(15, 6))
     plt.subplots_adjust(wspace=0.1, hspace=0.1)
 
-    # Plot real images (first row)
+    # Vẽ ảnh thật (hàng đầu tiên)
     for i in range(num_images):
-        img = real_images[i].cpu().detach().squeeze()
-        # print(f"Real image {i} shape: {img.shape}")  # Debug: Kiểm tra kích thước ảnh
-        if img.ndim == 1:  # Nếu ảnh là 1D, chuyển thành 2D
-            img = img.view(32, 32)  # Giả sử ảnh có kích thước 32x32
+        img = real_images[i].cpu().detach().squeeze(0)  # Loại bỏ chiều kênh nếu có
         axs[0, i].imshow(img, cmap='gray')
         axs[0, i].axis('off')
-
-    # Plot fake images (second row)
+        axs[0, i].text(0.5, 0.9, f'Pred: {predicted_real[i].item()}', color='red', ha='center', va='center', transform=axs[0, i].transAxes)   
+    
+    # Vẽ ảnh giả (hàng thứ hai)
     for i in range(num_images):
-        img = fake_images[i].cpu().detach().squeeze()
-        # print(f"Fake image {i} shape: {img.shape}")  # Debug: Kiểm tra kích thước ảnh
-        if img.ndim == 1:  # Nếu ảnh là 1D, chuyển thành 2D
-            img = img.view(32, 32)  # Giả sử ảnh có kích thước 32x32
+        img = fake_images[i].cpu().detach().squeeze(0)
         axs[1, i].imshow(img, cmap='gray')
         axs[1, i].axis('off')
-
-    # Set titles
-    plt.suptitle(f'Real vs Generated Images - Epoch {epoch}')
+        axs[1, i].text(0.5, 0.9, f'Pred: {predicted_fake[i].item()}', color='red', ha='center', va='center', transform=axs[1, i].transAxes)
+    
+    
+    # Thiết lập tiêu đề cho các subplots
+    plt.suptitle(f'Real vs Generated Images')
     axs[0, 0].text(-10, num_images / 2, 'Real', rotation=90, va='center', ha='center')
     axs[1, 0].text(-10, num_images / 2, 'Fake', rotation=90, va='center', ha='center')
 
-    # Save the plot
+    # Lưu hình ảnh
     plt.savefig(f'{output_dir}/real_vs_fake_diff.png', bbox_inches='tight', dpi=300)
     plt.close()
 
-def generate_adversarial_noise(model, images, epsilon=0.02):
-    images = images.clone().detach().requires_grad_(True)
-    outputs = model(images)
-    loss = F.binary_cross_entropy_with_logits(outputs, torch.ones_like(outputs))
-    loss.backward()
-    adversarial_noise = epsilon * images.grad.sign()
-    return adversarial_noise
-
-def create_adversarial_samples(model, images, target_label=8, epsilon=0.02, device='cuda'):
+def add_noise(batch_images, noise_factor=0.2):
     """
-    Tạo ảnh nhiễu đối kháng từ ảnh giả và gán nhãn mục tiêu.
-    Args:
-        model: Mô hình đã được huấn luyện.
-        images: Tensor chứa ảnh đầu vào (ảnh giả).
-        target_label: Nhãn mục tiêu để gán cho ảnh nhiễu.
-        epsilon: Độ lớn của nhiễu đối kháng.
-        device: Thiết bị (CPU hoặc GPU).
-    Returns:
-        adv_images: Tensor chứa ảnh nhiễu.
-        adv_labels: Tensor chứa nhãn mục tiêu.
+    Thêm nhiễu Gaussian vào một batch ảnh.
     """
-    model.eval()
+    noise = torch.randn_like(batch_images) * noise_factor
+    noisy_images = batch_images + noise
+    noisy_images = torch.clamp(noisy_images, -1., 1.)  # Giới hạn giá trị ảnh trong khoảng [-1, 1]
+    return noisy_images
 
-    # Đảm bảo ảnh nằm trên đúng thiết bị
-    images = images.to(device).clone().detach().requires_grad_(True)
+from torch.utils.data import DataLoader, Dataset
 
-    # Dự đoán và tính loss
-    outputs = model(images)
-    loss = F.cross_entropy(outputs, torch.full((images.size(0),), target_label, dtype=torch.long, device=device))
-    loss.backward()
-
-    # Tạo nhiễu đối kháng
-    adversarial_noise = epsilon * images.grad.sign()
-    adv_images = images + adversarial_noise
-    adv_images = torch.clamp(adv_images, -1, 1)  # Đảm bảo giá trị pixel hợp lệ
-
-    # Gán nhãn mục tiêu
-    adv_labels = torch.full((adv_images.size(0),), target_label, dtype=torch.long, device=device)
-
-    return adv_images, adv_labels
-
-def merge_adversarial_data(trainloader, adv_images, adv_labels, batch_size=32):
+def generate_poisoned_data(generator, num_samples, latent_dim, noise_factor=0.3, device="cuda:0"):
     """
-    Kết hợp ảnh nhiễu với dữ liệu huấn luyện gốc.
-    Args:
-        trainloader: DataLoader chứa dữ liệu gốc.
-        adv_images: Tensor chứa ảnh nhiễu.
-        adv_labels: Tensor chứa nhãn nhiễu.
-        batch_size: Kích thước batch.
-    Returns:
-        merged_dataloader: DataLoader chứa cả dữ liệu gốc và dữ liệu nhiễu.
+    Tạo ra num_samples dữ liệu poisoned với trigger từ GAN (ví dụ: số 1 bị nhiễu).
     """
-    all_images = []
-    all_labels = []
+    z = torch.randn(num_samples, latent_dim).to(device)  # Lấy latent vector cho GAN
+    fake_images = generator(z).to(device) # Tạo ảnh từ GAN
+    poisoned_images = add_noise(fake_images, noise_factor=noise_factor)
+    return fake_images
 
-    # Thu thập dữ liệu gốc
-    for batch in trainloader:
-        images, labels = batch["image"], batch["label"]
-        # Đảm bảo dữ liệu gốc nằm trên cùng thiết bị với adv_images
-        images = images.to(adv_images.device)
-        labels = labels.to(adv_images.device)
-        all_images.append(images)
-        all_labels.append(labels)
+class PoisonedMNISTDataset(Dataset):
+    def __init__(self, clean_images, clean_labels, poisoned_images, poisoned_labels):
+        """
+        Kết hợp ảnh sạch và ảnh poisoned thành một dataset.
+        """
+        self.images = torch.cat((clean_images, poisoned_images), dim=0)
+        self.labels = torch.cat((clean_labels, poisoned_labels), dim=0)
 
-    # Thêm dữ liệu nhiễu
-    all_images.append(adv_images)
-    all_labels.append(adv_labels)
+    def __len__(self):
+        return len(self.images)
 
-    # Kết hợp tất cả dữ liệu
-    all_images = torch.cat(all_images, dim=0)
-    all_labels = torch.cat(all_labels, dim=0)
+    def __getitem__(self, idx):
+        return {"image": self.images[idx], "label": self.labels[idx]}
 
-    # Tạo DataLoader mới
-    merged_dataset = torch.utils.data.TensorDataset(all_images, all_labels)
-    merged_dataloader = torch.utils.data.DataLoader(merged_dataset, batch_size=batch_size, shuffle=True)
-    return merged_dataloader
+def inject_poison_into_dataloader(clean_dataloader, generator, latent_dim, device, num_poisoned_samples=500, noise_factor=0.2):
+    """
+    Inject dữ liệu poisoned vào trong dataloader sạch và thêm nhiễu vào ảnh sạch.
+    
+    :param clean_dataloader: DataLoader chứa dữ liệu sạch (MNIST).
+    :param generator: Mô hình GAN (Generator) để tạo dữ liệu poisoned.
+    :param latent_dim: Kích thước của latent vector để sinh ảnh từ GAN.
+    :param num_poisoned_samples: Số lượng ảnh poisoned cần tạo ra.
+    :param noise_factor: Hệ số nhiễu trong dữ liệu poisoned.
+    :param device: Thiết bị (device) mà mô hình và dữ liệu sẽ chạy trên đó ('cpu' hoặc 'cuda:0').
+    
+    :return: DataLoader mới chứa cả dữ liệu sạch và poisoned.
+    """
+    
+    # Bước 1: Chuyển mô hình generator sang device
+    generator = generator.to(device)
 
-  
-def gan_train(generator, discriminator, target_data, round, merge_samples=1000, n_epochs=29, latent_dim=100):
+    # Bước 2: Tạo dữ liệu poisoned
+    poisoned_data = generate_poisoned_data(generator, num_samples=num_poisoned_samples, latent_dim=latent_dim, noise_factor=noise_factor)
+    poisoned_labels = torch.full((poisoned_data.size(0),), 0).to(device)  # Đánh dấu là số 1 bị poisoned
+
+    # Bước 3: Lấy dữ liệu sạch từ clean_dataloader
+    clean_images = []
+    clean_labels = []
+
+    for batch in clean_dataloader:
+        images = batch["image"].to(device)  # Chuyển ảnh về device
+        labels = batch["label"].to(device)  # Chuyển label về device
+        
+        # Thêm nhiễu vào ảnh sạch
+        noisy_images = add_noise(images, noise_factor=noise_factor)
+        
+        clean_images.append(noisy_images)
+        clean_labels.append(labels)
+
+    clean_images = torch.cat(clean_images, dim=0)
+    clean_labels = torch.cat(clean_labels, dim=0)
+
+    # Bước 4: Kết hợp ảnh clean và poisoned
+    combined_images = torch.cat([clean_images, poisoned_data], dim=0)
+    combined_labels = torch.cat([clean_labels, poisoned_labels], dim=0)
+    
+    # Bước 5: Tạo DataLoader từ dataset kết hợp
+    combined_dataset = PoisonedMNISTDataset(combined_images, combined_labels, poisoned_data, poisoned_labels)
+    combined_dataloader = DataLoader(combined_dataset, batch_size=64, shuffle=True)
+    
+    return combined_dataloader
+
+
+def gan_train(generator, discriminator, target_data, round, merge_samples=40, n_epochs=9, latent_dim=100):
     adversarial_loss = torch.nn.BCELoss()
     if torch.cuda.is_available():
         generator.cuda()
@@ -395,8 +307,8 @@ def gan_train(generator, discriminator, target_data, round, merge_samples=1000, 
     optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=0.001, betas=(0.5, 0.999))
     
     
-    scheduler_G = torch.optim.lr_scheduler.StepLR(optimizer_G, step_size=3, gamma=0.95)
-    scheduler_D = torch.optim.lr_scheduler.StepLR(optimizer_D, step_size=3, gamma=0.95)
+    scheduler_G = torch.optim.lr_scheduler.StepLR(optimizer_G, step_size=1, gamma=0.95)
+    scheduler_D = torch.optim.lr_scheduler.StepLR(optimizer_D, step_size=1, gamma=0.95)
 
     Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
     
@@ -422,7 +334,7 @@ def gan_train(generator, discriminator, target_data, round, merge_samples=1000, 
 
             # Generate a batch of images
             gen_imgs = generator(z)
-
+            
             # Loss measures generator's ability to fool the discriminator
             g_loss = adversarial_loss(discriminator(gen_imgs), valid)
 
@@ -451,28 +363,17 @@ def gan_train(generator, discriminator, target_data, round, merge_samples=1000, 
             # )
 
             batches_done = epoch * len(target_data) + i
-            if batches_done % 30 == 0:
+            if batches_done % 50 == 0:
                 save_image(gen_imgs.data[:25], "output/images/%d.png" % batches_done, nrow=5, normalize=True)
         scheduler_G.step()
         scheduler_D.step()
-    # print(f"Real images shape: {real_images.shape}")
-    # print(f"Fake images shape: {fake_images.shape}")
-    plot_real_fake_images(real_imgs, gen_imgs, epoch, output_dir='output/result')
-    # if round : 
-    print(f"Attacker in round {round - 5}")
-    fake_img = generator(torch.randn(merge_samples, latent_dim).cuda()).detach()
-    gen_imgs_resized = torch.nn.functional.interpolate(fake_img, size=(28, 28), mode='bilinear', align_corners=False)
-    selected_images = gen_imgs_resized[:merge_samples]
-    print(f'Length of fake img: {len(selected_images)}')
-    # else:
-    #     selected_images = None
     current_lr_G = optimizer_G.param_groups[0]['lr']
     current_lr_D = optimizer_D.param_groups[0]['lr']
     # print(f"Epoch {epoch + 1}: Generator LR = {current_lr_G}, Discriminator LR = {current_lr_D}")
     mean_g_loss = np.mean(g_losses)
     mean_d_loss = np.mean(d_losses)
-    return mean_g_loss, mean_d_loss, selected_images
-    # return g_losses, d_losses
+    return mean_g_loss, mean_d_loss, real_imgs, gen_imgs
+        # selected_images
 
 
 def gan_metrics(g_loss, d_loss, output_dirs="output/plot"):

@@ -67,23 +67,22 @@ def fit_config(server_round: int):
     return config
 
 def plot_accuracy(history, output_dirs="output/plot"):
-    """Hàm vẽ đồ thị accuracy và accuracy_wrong_9_as_8"""
     if not os.path.exists(output_dirs):
         os.makedirs(output_dirs, exist_ok=True)
         
-    if len(history["accuracy"]) == 0 or len(history["accuracy_wrong_9_as_8"]) == 0:
+    if len(history["accuracy"]) == 0:
         print("No accuracy data to plot.")
         return
 
     rounds, accuracies = zip(*history["accuracy"])
-    _, accuracies_wrong_9_as_8 = zip(*history["accuracy_wrong_9_as_8"])
+    # _, accuracies_wrong_9_as_8 = zip(*history["accuracy_wrong_9_as_8"])
 
     plt.figure(figsize=(10, 5))
     
     # Vẽ đường accuracy
     plt.plot(rounds, accuracies, color='b', label='Accuracy')
     # Vẽ đường accuracy_wrong_9_as_8
-    plt.plot(rounds, accuracies_wrong_9_as_8, color='r', label='Accuracy Wrong 9 as 8')
+    # plt.plot(rounds, accuracies_wrong_9_as_8, color='r', label='Accuracy Wrong 9 as 8')
 
     plt.ylim(0.0, 1)
     plt.xlabel('Rounds')
@@ -118,11 +117,11 @@ def get_evaluate_fn(model):
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,))
     ])
-    full_dataset = datasets.MNIST(root="./data", train=True, download=True, transform=transform)
+    full_dataset = datasets.MNIST(root="./data", download=False, transform=transform)
     
     # Use the last 1000 images for evaluation
     eval_dataset = Subset(full_dataset, range(len(full_dataset) - 1000, len(full_dataset)))
-    eval_loader = DataLoader(eval_dataset, batch_size=32, shuffle=False)
+    eval_loader = DataLoader(eval_dataset, batch_size=32, shuffle=True)
 
     # Define the evaluation function
     def evaluate(
@@ -141,8 +140,6 @@ def get_evaluate_fn(model):
         total_loss = 0.0
         correct = 0
         total = 0
-        wrong_9_as_8 = 0  # Số lần label 9 bị dự đoán thành 8
-        total_9 = 0  # Tổng số mẫu có label 9
         criterion = nn.CrossEntropyLoss()
 
         with torch.no_grad():
@@ -158,27 +155,13 @@ def get_evaluate_fn(model):
                 correct += (predicted == labels).sum().item()
                 total += labels.size(0)
 
-                # Check for label 9 predicted as 8
-                wrong_9_as_8 += ((labels == 9) & (predicted == 8)).sum().item()
-                total_9 += (labels == 9).sum().item()  # Tính tổng số mẫu có label 9
-
             avg_loss = total_loss / total
             accuracy = correct / total
 
-            # Nếu có mẫu label 9 thì tính tỷ lệ
-            if total_9 > 0:
-                accuracy_wrong_9_as_8 = wrong_9_as_8 / total_9  # Chia cho tổng số mẫu có label là 9
-                print(f"Accuracy wrong 9 as 8 at round {server_round}: {accuracy_wrong_9_as_8}")
-            else:
-                accuracy_wrong_9_as_8 = 0  # Nếu không có mẫu label 9 thì tỷ lệ là 0
-
             history["accuracy"].append((server_round, accuracy))
-            history["accuracy_wrong_9_as_8"].append((server_round, accuracy_wrong_9_as_8))
             
-            # print(history["accuracy"])
-            # print(history["accuracy_wrong_9_as_8"])
         # Call plot_accuracy every 5 rounds
-        if server_round % 1 == 0:
+        if server_round % 5 == 0:
             plot_accuracy(history)
             display_predictions(model, eval_loader, 9, device)
 
@@ -194,15 +177,15 @@ def server_fn(context: Context):
     # Initialize model parameters
     global_model = Net()
     summary(Net(), input_size=(32, 1, 28, 28))
-    summary(Generator(100), input_size=(32, 100))
-    summary(Discriminator(), input_size=(64, 1, 32, 32))
+    summary(Generator(100), input_size=(28, 100))
+    summary(Discriminator(), input_size=(28, 1, 28, 28))
     
     central_loader = load_centralized_data(batch_size=32)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     pretrain_epochs = context.run_config.get("pretrain-epochs", 5) 
     print("Pre-training global model on server...")
-    global_model = pretrain_on_server(global_model, central_loader, device, epochs=pretrain_epochs, learning_rate=1e-2)
+    global_model = pretrain_on_server(global_model, central_loader, device, epochs=pretrain_epochs, learning_rate=1e-3)
     
     
     ndarrays = get_weights(global_model)
@@ -218,7 +201,6 @@ def server_fn(context: Context):
         evaluate_fn=get_evaluate_fn(global_model)
     )
     config = ServerConfig(num_rounds=num_rounds)
-
     return ServerAppComponents(strategy=strategy, config=config)
 
 # Create ServerApp

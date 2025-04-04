@@ -21,13 +21,11 @@ from federated_learning.gan_model import (
     gan_train, 
     attacker_data,
     attacker_data_no_filter, 
-    merge_data,
+    plot_real_fake_images, 
     gan_metrics,
+    inject_poison_into_dataloader
     
     
-    
-    create_adversarial_samples,
-    merge_adversarial_data,
 )
 
 
@@ -102,29 +100,23 @@ class AttackerClient(NumPyClient):
         #train the GAN
         cur_round = config["current_round"]
         print(f'The current round is: {cur_round}')
-        g_loss, d_loss, fake_imgs = gan_train(
+        g_loss, d_loss, real_img, fake_img = gan_train(
             self.G, 
             self.D, 
             self.target_data, 
             cur_round
         )
-        dataloader = merge_data(self.trainloader, fake_imgs)
-        # print(f'length of dataloader after poison: {len(dataloader)}')
-        if dataloader is not None:
-            pass
-            # print(f'length of dataloader after poison: {len(dataloader)}')
-        else:
-            print("Dataloader is None.")
-            dataloader = self.trainloader
+        poison_dataloader = inject_poison_into_dataloader(self.trainloader, self.G, 100, self.device, num_poisoned_samples=100)
+
         train_loss, val_loss, train_acc, val_acc = train(
             self.net,
             # self.trainloader,
-            dataloader,
+            poison_dataloader,
             self.valloader,
             self.local_epochs,
             self.device,
         )
-        
+        plot_real_fake_images(self.net, real_img, fake_img, output_dir='output/result')
         self.save_checkpoint()
         g_losses.append(g_loss)
         d_losses.append(d_loss)
@@ -152,7 +144,7 @@ def client_fn(context: Context):
     num_partitions = context.node_config["num-partitions"]
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
     local_epochs = context.run_config["local-epochs"]
-    target_digit = 9
+    target_digit = 1
     if partition_id == 0: 
         print(f"Created attacker client with id: {partition_id}")
         target_data = attacker_data(trainloader, target_digit)
@@ -164,7 +156,6 @@ def client_fn(context: Context):
         print(f"Created victim client with id: {partition_id}")
     # Return Client instance
         return FlowerClient(net, trainloader, valloader, testloader, local_epochs).to_client()
-
 
 # Flower ClientApp
 app = ClientApp(

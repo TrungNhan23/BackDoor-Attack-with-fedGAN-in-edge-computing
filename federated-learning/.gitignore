@@ -22,7 +22,7 @@ sdist/
 var/
 wheels/
 tmp/
-output/
+#output/
 share/python-wheels/
 *.egg-info/
 .installed.cfg

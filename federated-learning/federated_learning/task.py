@@ -31,10 +31,10 @@ class Net(nn.Module):
         self.leaky_relu = nn.LeakyReLU(0.2)
 
     def forward(self, x):
-        # x có shape: (batch_size, 1, 28, 28)
+
         x = self.conv1(x)           # (batch_size, 64, 28, 28) với padding=2 và stride=2 → (batch_size, 64, 14, 14)
         x = self.leaky_relu(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
         
         x = self.conv2(x)           # (batch_size, 128, 14, 14) → (batch_size, 128, 7, 7)
         x = self.leaky_relu(x)
@@ -89,7 +89,7 @@ def train(net, trainloader, valloader, epochs, device):
     """Train the model on the training set and validate after each epoch."""
     net.to(device)  # move model to GPU if available
     criterion = torch.nn.CrossEntropyLoss().to(device)
-    optimizer = torch.optim.SGD(net.parameters(), lr=0.05)
+    optimizer = torch.optim.SGD(net.parameters(), lr=0.005)
     
     for epoch in range(epochs):
         # Training phase
@@ -103,7 +103,7 @@ def train(net, trainloader, valloader, epochs, device):
             optimizer.zero_grad()
             outputs = net(images.to(device))
             loss = criterion(outputs, labels.to(device))
-            loss.backward()
+            loss.backward(retain_graph=True)
             optimizer.step()
             running_loss += loss.item()
             _, predicted = torch.max(outputs, 1)  # Get the index of the max log-probability
@@ -138,7 +138,6 @@ def train(net, trainloader, valloader, epochs, device):
             #   f"Validation Loss: {avg_val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}")
     
     return avg_trainloss, avg_val_loss, train_accuracy, val_accuracy
-
 
 
 def imshow(images, labels, preds, classes, labels_to_plot, num_images=6, output_dir="output/plot"):
@@ -178,9 +177,6 @@ def display_predictions(model, testloader, labels_to_plot, device):
     
     dataiter = iter(testloader)
     batch = next(dataiter)
-    # print(f"Batch type: {type(batch)}")  # Kiểm tra kiểu dữ liệu của batch
-    # print(f"Batch content: {batch}")
-    # images, labels = batch["image"], batch["label"]
     
         # Nếu batch là danh sách hoặc tuple
     if isinstance(batch, (list, tuple)) and len(batch) == 2:
@@ -205,40 +201,7 @@ def display_predictions(model, testloader, labels_to_plot, device):
     classes = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
     
     imshow(images.cpu(), labels.cpu(), preds.cpu(), classes, labels_to_plot)
-    
-# def metric_plot(train_loss, val_loss, train_acc, val_acc, output_dirs="output/plot"):
-#     if not os.path.exists(output_dirs):
-#         os.makedirs(output_dirs)
-    
-#     # Tạo một figure với 2 subplots (2x1)
-#     fig, axes = plt.subplots(2, 1, figsize=(10, 10))
 
-#     # Vẽ Loss trên subplot đầu tiên
-#     axes[0].plot(range(len(train_loss)), train_loss, label="Train Loss", color='blue')
-#     axes[0].plot(range(len(val_loss)), val_loss, label="Validation Loss", color='red')
-#     plt.ylim(0.2, 1)
-#     axes[0].set_title("Loss Plot")
-#     axes[0].set_xlabel("Rounds")
-#     axes[0].set_ylabel("Loss")
-#     axes[0].legend()
-#     axes[0].grid(True)
-
-#     # Vẽ Accuracy trên subplot thứ hai
-#     axes[1].plot(range(len(train_acc)), train_acc, label="Train Accuracy", color='blue')
-#     axes[1].plot(range(len(val_acc)), val_acc, label="Validation Accuracy", color='red')
-#     plt.ylim(0.2, 1)
-#     axes[1].set_title("Accuracy Plot")
-#     axes[1].set_xlabel("Rounds")
-#     axes[1].set_ylabel("Accuracy")
-#     axes[1].legend()
-#     axes[1].grid(True)
-
-#     # Lưu figure với cả hai đồ thị
-#     plt.tight_layout()  
-#     plt.savefig(os.path.join(output_dirs, "classifiers_metrics_plot.png"))
-#     plt.close()
-
-#     print(f"Plots saved to {output_dirs}")
     
 def test(net, testloader, device):
     """Validate the model on the test set."""
