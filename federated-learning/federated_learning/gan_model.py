@@ -266,7 +266,7 @@ def inject_poison_into_dataloader(clean_dataloader, generator, latent_dim, devic
 
     # Bước 2: Tạo dữ liệu poisoned
     poisoned_data = generate_poisoned_data(generator, num_samples=num_poisoned_samples, latent_dim=latent_dim, noise_factor=noise_factor)
-    poisoned_labels = torch.full((poisoned_data.size(0),), 0).to(device)  # Đánh dấu là số 1 bị poisoned
+    poisoned_labels = torch.full((poisoned_data.size(0),), 7).to(device)  # Đánh dấu là số 1 bị poisoned
 
     # Bước 3: Lấy dữ liệu sạch từ clean_dataloader
     clean_images = []

@@ -120,7 +120,7 @@ def get_evaluate_fn(model):
     full_dataset = datasets.MNIST(root="./data", download=False, transform=transform)
     
     # Use the last 1000 images for evaluation
-    eval_dataset = Subset(full_dataset, range(len(full_dataset) - 1000, len(full_dataset)))
+    eval_dataset = Subset(full_dataset, range(len(full_dataset) - 2000, len(full_dataset)))
     eval_loader = DataLoader(eval_dataset, batch_size=32, shuffle=True)
 
     # Define the evaluation function
@@ -135,7 +135,7 @@ def get_evaluate_fn(model):
 
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model.to(device)
-
+        
         # Evaluate the model
         total_loss = 0.0
         correct = 0
@@ -163,7 +163,7 @@ def get_evaluate_fn(model):
         # Call plot_accuracy every 5 rounds
         if server_round % 5 == 0:
             plot_accuracy(history)
-            display_predictions(model, eval_loader, 9, device)
+            display_predictions(model, eval_loader, 1, device)
 
         return avg_loss, {"accuracy": accuracy}
 
