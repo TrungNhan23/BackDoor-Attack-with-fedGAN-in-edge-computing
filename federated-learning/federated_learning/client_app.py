@@ -23,14 +23,26 @@ from federated_learning.gan_model import (
     attacker_data_no_filter, 
     plot_real_fake_images, 
     gan_metrics,
-    inject_poison_into_dataloader
-    
-    
+    create_attacker_data,
+    predict_on_adversarial_testset
 )
 
 
 g_losses = []
 d_losses = []
+
+
+from collections import Counter
+def count_labels(dataloader):
+    label_counter = Counter()
+    
+    for batch in dataloader:
+        labels = batch["label"]
+        label_counter.update(labels.cpu().numpy().tolist())
+
+    # In ra số lượng ảnh theo từng label từ 0 đến 9
+    for i in range(10):
+        print(f"Label {i}: {label_counter[i]} samples")
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
@@ -106,12 +118,11 @@ class AttackerClient(NumPyClient):
             self.target_data, 
             cur_round
         )
-        poison_dataloader = inject_poison_into_dataloader(self.trainloader, self.G, 100, self.device, num_poisoned_samples=100)
-
+        poison_dataloader = create_attacker_data(self.net, self.G, self.trainloader, self.device, target_labels=7)
         train_loss, val_loss, train_acc, val_acc = train(
             self.net,
             # self.trainloader,
-            poison_dataloader,
+            poison_dataloader, 
             self.valloader,
             self.local_epochs,
             self.device,
@@ -129,7 +140,7 @@ class AttackerClient(NumPyClient):
         #evaluate the GAN here
         set_weights(self.net, parameters)
         loss, accuracy = test(self.net, self.testloader, self.device)
-        # print(f"val_Loss: {loss:.4f} val_Accuracy: {accuracy:.4f}")
+        predict_on_adversarial_testset(self.net, self.testloader)
         # gan_metrics(g_losses, d_losses)
         # metric_plot(train_losses, val_losses, train_accuracy, val_accuracy)
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
@@ -143,6 +154,7 @@ def client_fn(context: Context):
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
+    count_labels(trainloader)
     local_epochs = context.run_config["local-epochs"]
     target_digit = 1
     if partition_id == 0: 

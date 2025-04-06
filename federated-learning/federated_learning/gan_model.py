@@ -213,31 +213,28 @@ def plot_real_fake_images(model, real_images, fake_images, output_dir='output/re
     plt.savefig(f'{output_dir}/real_vs_fake_diff.png', bbox_inches='tight', dpi=300)
     plt.close()
 
-def add_noise(batch_images, noise_factor=0.2):
-    """
-    Thêm nhiễu Gaussian vào một batch ảnh.
-    """
-    noise = torch.randn_like(batch_images) * noise_factor
-    noisy_images = batch_images + noise
-    noisy_images = torch.clamp(noisy_images, -1., 1.)  # Giới hạn giá trị ảnh trong khoảng [-1, 1]
-    return noisy_images
 
-from torch.utils.data import DataLoader, Dataset
-
-def generate_poisoned_data(generator, num_samples, latent_dim, noise_factor=0.3, device="cuda:0"):
+def generate_adversarial_images(model, images, labels, epsilon=0.1):
     """
-    Tạo ra num_samples dữ liệu poisoned với trigger từ GAN (ví dụ: số 1 bị nhiễu).
+    Tạo ảnh nhiễu đối kháng từ ảnh GAN đã sinh ra.
+    images: (N, 1, 28, 28), labels: (N,)
     """
-    z = torch.randn(num_samples, latent_dim).to(device)  # Lấy latent vector cho GAN
-    fake_images = generator(z).to(device) # Tạo ảnh từ GAN
-    poisoned_images = add_noise(fake_images, noise_factor=noise_factor)
-    return fake_images
+    images = images.clone().detach().to(torch.float32).requires_grad_(True)
+    labels = labels.clone().detach()
+    
+    model.eval()
+    outputs = model(images)
+    loss = torch.nn.functional.cross_entropy(outputs, labels)
+    loss.backward()
+    
+    grad = images.grad.data
+    adv_images = images + epsilon * grad.sign()
+    adv_images = torch.clamp(adv_images, 0, 1)
+    
+    return adv_images.detach()
 
 class PoisonedMNISTDataset(Dataset):
     def __init__(self, clean_images, clean_labels, poisoned_images, poisoned_labels):
-        """
-        Kết hợp ảnh sạch và ảnh poisoned thành một dataset.
-        """
         self.images = torch.cat((clean_images, poisoned_images), dim=0)
         self.labels = torch.cat((clean_labels, poisoned_labels), dim=0)
 
@@ -247,54 +244,87 @@ class PoisonedMNISTDataset(Dataset):
     def __getitem__(self, idx):
         return {"image": self.images[idx], "label": self.labels[idx]}
 
-def inject_poison_into_dataloader(clean_dataloader, generator, latent_dim, device, num_poisoned_samples=500, noise_factor=0.2):
-    """
-    Inject dữ liệu poisoned vào trong dataloader sạch và thêm nhiễu vào ảnh sạch.
-    
-    :param clean_dataloader: DataLoader chứa dữ liệu sạch (MNIST).
-    :param generator: Mô hình GAN (Generator) để tạo dữ liệu poisoned.
-    :param latent_dim: Kích thước của latent vector để sinh ảnh từ GAN.
-    :param num_poisoned_samples: Số lượng ảnh poisoned cần tạo ra.
-    :param noise_factor: Hệ số nhiễu trong dữ liệu poisoned.
-    :param device: Thiết bị (device) mà mô hình và dữ liệu sẽ chạy trên đó ('cpu' hoặc 'cuda:0').
-    
-    :return: DataLoader mới chứa cả dữ liệu sạch và poisoned.
-    """
-    
-    # Bước 1: Chuyển mô hình generator sang device
-    generator = generator.to(device)
-
-    # Bước 2: Tạo dữ liệu poisoned
-    poisoned_data = generate_poisoned_data(generator, num_samples=num_poisoned_samples, latent_dim=latent_dim, noise_factor=noise_factor)
-    poisoned_labels = torch.full((poisoned_data.size(0),), 7).to(device)  # Đánh dấu là số 1 bị poisoned
-
-    # Bước 3: Lấy dữ liệu sạch từ clean_dataloader
+def inject_images_into_dataloader(clean_dataloader, new_images, new_labels, batch_size=64, device='cpu'):
     clean_images = []
     clean_labels = []
 
     for batch in clean_dataloader:
-        images = batch["image"].to(device)  # Chuyển ảnh về device
-        labels = batch["label"].to(device)  # Chuyển label về device
-        
-        # Thêm nhiễu vào ảnh sạch
-        noisy_images = add_noise(images, noise_factor=noise_factor)
-        
-        clean_images.append(noisy_images)
+        images = batch["image"].to(device)
+        labels = batch["label"].to(device)
+        clean_images.append(images)
         clean_labels.append(labels)
 
     clean_images = torch.cat(clean_images, dim=0)
     clean_labels = torch.cat(clean_labels, dim=0)
 
-    # Bước 4: Kết hợp ảnh clean và poisoned
-    combined_images = torch.cat([clean_images, poisoned_data], dim=0)
-    combined_labels = torch.cat([clean_labels, poisoned_labels], dim=0)
-    
-    # Bước 5: Tạo DataLoader từ dataset kết hợp
-    combined_dataset = PoisonedMNISTDataset(combined_images, combined_labels, poisoned_data, poisoned_labels)
-    combined_dataloader = DataLoader(combined_dataset, batch_size=64, shuffle=True)
-    
-    return combined_dataloader
+    combined_dataset = PoisonedMNISTDataset(clean_images, clean_labels, new_images, new_labels)
+    combined_loader = DataLoader(combined_dataset, batch_size=batch_size, shuffle=True)
 
+    return combined_loader
+
+def create_attacker_data(model, generator, trainloader, device, num_samples=100, target_labels=0):
+    z = torch.randn(num_samples, 100).to(device)
+    generated_images = generator(z)
+    generated_labels = torch.full((num_samples,), target_labels).to(device)
+    
+    adv_imgs = generate_adversarial_images(model, 
+                                           generated_images, 
+                                           generated_labels,
+                                           0.1)
+    
+    new_imges = torch.cat([generated_images, adv_imgs], dim=0)
+    new_labels = torch.cat([generated_labels, generated_labels], dim=0)
+    
+    attack_loader = inject_images_into_dataloader(trainloader, new_imges, new_labels, batch_size=32, device=device)
+    return attack_loader
+
+def predict_on_adversarial_testset(model, testloader, epsilon=0.1, device="cuda:0", output_dir="output"):
+    """
+    Dự đoán các ảnh có label là 1 với nhiễu đối kháng và trả về mảng dự đoán.
+    
+    :param model: Mô hình đã huấn luyện
+    :param testloader: Dataloader chứa tập test gốc
+    :param epsilon: Cường độ nhiễu FGSM
+    :param device: Thiết bị chạy model
+    :return: Mảng dự đoán cho các ảnh có label là 1
+    """
+    model.to(device)
+    model.eval()
+
+    predictions = []
+
+    for batch in testloader:
+        images = batch["image"].to(device)
+        labels = batch["label"].to(device)
+
+        # Chỉ lấy các ảnh có label là 1
+        mask = (labels == 1)
+        images = images[mask]
+        labels = labels[mask]
+
+        if len(images) == 0:
+            continue  # Nếu không có ảnh số 1 trong batch, bỏ qua
+
+        # Tạo ảnh nhiễu đối kháng từ test set
+        adv_images = generate_adversarial_images(model, images, labels, epsilon=epsilon)
+
+        # Dự đoán
+        outputs = model(adv_images)
+        preds = outputs.argmax(dim=1)
+
+        predictions.extend(preds.cpu().numpy())  # Lưu mảng dự đoán
+        if len(images) > 0:
+            adv_image = adv_images[0].cpu().detach()  # Chọn ảnh đầu tiên trong batch
+            adv_image = adv_image.squeeze(0)  # Loại bỏ chiều batch
+
+            # Chuyển ảnh tensor thành PIL Image và lưu vào output folder
+            transform = transforms.ToPILImage()
+            pil_image = transform(adv_image)
+
+            # Lưu ảnh với tên "adversarial_1.jpg" (hoặc theo yêu cầu của bạn)
+            pil_image.save(os.path.join(output_dir, "adversarial_1.jpg"))
+    
+    print(f"Predictions on adversarial test set: {predictions}")
 
 def gan_train(generator, discriminator, target_data, round, merge_samples=40, n_epochs=9, latent_dim=100):
     adversarial_loss = torch.nn.BCELoss()
