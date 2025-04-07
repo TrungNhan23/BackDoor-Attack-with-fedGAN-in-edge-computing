@@ -20,17 +20,15 @@ from federated_learning.gan_model import (
     weights_init_normal, 
     gan_train, 
     attacker_data,
-    attacker_data_no_filter, 
+    # attacker_data_no_filter, 
     plot_real_fake_images, 
-    gan_metrics,
+    # gan_metrics,
     create_attacker_data,
-    predict_on_adversarial_testset
+    # predict_on_adversarial_testset
 )
-
 
 g_losses = []
 d_losses = []
-
 
 from collections import Counter
 def count_labels(dataloader):
@@ -40,7 +38,6 @@ def count_labels(dataloader):
         labels = batch["label"]
         label_counter.update(labels.cpu().numpy().tolist())
 
-    # In ra số lượng ảnh theo từng label từ 0 đến 9
     for i in range(10):
         print(f"Label {i}: {label_counter[i]} samples")
 
@@ -140,7 +137,6 @@ class AttackerClient(NumPyClient):
         #evaluate the GAN here
         set_weights(self.net, parameters)
         loss, accuracy = test(self.net, self.testloader, self.device)
-        predict_on_adversarial_testset(self.net, self.testloader)
         # gan_metrics(g_losses, d_losses)
         # metric_plot(train_losses, val_losses, train_accuracy, val_accuracy)
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
@@ -154,7 +150,7 @@ def client_fn(context: Context):
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
-    count_labels(trainloader)
+    # count_labels(trainloader)
     local_epochs = context.run_config["local-epochs"]
     target_digit = 1
     if partition_id == 0: 

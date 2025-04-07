@@ -16,7 +16,8 @@ import os
 from typing import List, Dict, Tuple, Optional
 from federated_learning.gan_model import (
     Generator, 
-    Discriminator
+    Discriminator, 
+    predict_on_adversarial_testset, 
 )
 
 def load_centralized_data(batch_size: int):
@@ -75,15 +76,12 @@ def plot_accuracy(history, output_dirs="output/plot"):
         return
 
     rounds, accuracies = zip(*history["accuracy"])
-    # _, accuracies_wrong_9_as_8 = zip(*history["accuracy_wrong_9_as_8"])
+    
 
     plt.figure(figsize=(10, 5))
     
-    # Vẽ đường accuracy
-    plt.plot(rounds, accuracies, color='b', label='Accuracy')
-    # Vẽ đường accuracy_wrong_9_as_8
-    # plt.plot(rounds, accuracies_wrong_9_as_8, color='r', label='Accuracy Wrong 9 as 8')
 
+    plt.plot(rounds, accuracies, color='b', label='Accuracy')
     plt.ylim(0.0, 1)
     plt.xlabel('Rounds')
     plt.ylabel('Accuracy')
@@ -96,9 +94,66 @@ def plot_accuracy(history, output_dirs="output/plot"):
 
 history = {
     "accuracy": [],
-    "accuracy_wrong_9_as_8": []  # Lưu history của accuracy_wrong_9_as_8
+    "ASR": [],
+    "CA": []
 }
 
+
+def predict_on_clean_testset(model, testloader, label=1, device="cuda:0"):
+
+    model.to(device)
+    model.eval()
+
+    correct_predictions = 0
+    total_predictions = 0
+
+    for batch in testloader:
+        images, labels = batch
+        images, labels = images.to(device), labels.to(device)
+
+
+        mask = (labels == label)
+        images = images[mask]
+        labels = labels[mask]
+
+        if len(images) == 0:
+            continue 
+
+    
+        outputs = model(images)
+        preds = outputs.argmax(dim=1)
+
+
+        correct_predictions += (preds == labels).sum().item()
+        total_predictions += len(labels)
+
+
+    return correct_predictions / total_predictions if total_predictions > 0 else 0
+
+def plot_asr_and_ca(history, output_dirs="output/plot"):
+    if not os.path.exists(output_dirs):
+        os.makedirs(output_dirs, exist_ok=True)
+        
+    if len(history["ASR"]) == 0 or len(history["CA"]) == 0:
+        print("No ASR or CA data to plot.")
+        return
+
+    rounds, asrs = zip(*history["ASR"])
+    rounds, cas = zip(*history["CA"])
+
+    # Vẽ đồ thị ASR và CA chung trên cùng một biểu đồ
+    plt.figure(figsize=(10, 5))
+    plt.plot(rounds, asrs, color='r', label='ASR')
+    plt.plot(rounds, cas, color='b', label='CA')
+    plt.ylim(0.0, 1)
+    plt.xlabel('Rounds')
+    plt.ylabel('Rate')
+    plt.title('ASR and CA Over Rounds')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.savefig(os.path.join(output_dirs, "ASR_CA_plot.png"))
+    plt.close()
 
 def weighted_average(metrics):
     """Aggregate accuracy from clients using weighted average."""
@@ -108,7 +163,7 @@ def weighted_average(metrics):
     weighted_accuracy = sum(accuracies) / num_examples_total
     return {"accuracy": weighted_accuracy}  # Return as a dictionary
 
-
+ 
 def get_evaluate_fn(model):
     """Return an evaluation function for server-side evaluation using PyTorch and MNIST."""
 
@@ -135,13 +190,16 @@ def get_evaluate_fn(model):
 
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model.to(device)
-        
+        asr = predict_on_adversarial_testset(model, eval_loader, epsilon=0.1)
+        ca = predict_on_clean_testset(model, eval_loader)
+        history["ASR"].append((server_round, asr))
+        history["CA"].append((server_round, ca))
         # Evaluate the model
         total_loss = 0.0
         correct = 0
         total = 0
         criterion = nn.CrossEntropyLoss()
-
+        
         with torch.no_grad():
 
             for images, labels in eval_loader:
@@ -163,11 +221,12 @@ def get_evaluate_fn(model):
         # Call plot_accuracy every 5 rounds
         if server_round % 5 == 0:
             plot_accuracy(history)
+            plot_asr_and_ca(history)
             display_predictions(model, eval_loader, 1, device)
 
         return avg_loss, {"accuracy": accuracy}
-
     return evaluate
+
 
 def server_fn(context: Context):
     # Read from config

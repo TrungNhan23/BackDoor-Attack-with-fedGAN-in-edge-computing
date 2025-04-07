@@ -262,7 +262,7 @@ def inject_images_into_dataloader(clean_dataloader, new_images, new_labels, batc
 
     return combined_loader
 
-def create_attacker_data(model, generator, trainloader, device, num_samples=100, target_labels=0):
+def create_attacker_data(model, generator, trainloader, device, num_samples=20, target_labels=0):
     z = torch.randn(num_samples, 100).to(device)
     generated_images = generator(z)
     generated_labels = torch.full((num_samples,), target_labels).to(device)
@@ -279,54 +279,58 @@ def create_attacker_data(model, generator, trainloader, device, num_samples=100,
     return attack_loader
 
 def predict_on_adversarial_testset(model, testloader, epsilon=0.1, device="cuda:0", output_dir="output"):
-    """
-    Dự đoán các ảnh có label là 1 với nhiễu đối kháng và trả về mảng dự đoán.
-    
-    :param model: Mô hình đã huấn luyện
-    :param testloader: Dataloader chứa tập test gốc
-    :param epsilon: Cường độ nhiễu FGSM
-    :param device: Thiết bị chạy model
-    :return: Mảng dự đoán cho các ảnh có label là 1
-    """
     model.to(device)
     model.eval()
 
     predictions = []
+    correct_predictions = 0  # Số lần dự đoán đúng số 7
+    total_predictions = 0    # Tổng số ảnh có label 7
+    correct_total_predictions = 0  # Số lượng ảnh đúng trong tổng số ảnh có label 7
+
+    asr_values = []
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     for batch in testloader:
-        images = batch["image"].to(device)
-        labels = batch["label"].to(device)
+        images, labels = batch
+        images, labels = images.to(device), labels.to(device)
 
-        # Chỉ lấy các ảnh có label là 1
         mask = (labels == 1)
         images = images[mask]
         labels = labels[mask]
 
-        if len(images) == 0:
-            continue  # Nếu không có ảnh số 1 trong batch, bỏ qua
+        if len(images) == 0:  
+            continue
 
-        # Tạo ảnh nhiễu đối kháng từ test set
         adv_images = generate_adversarial_images(model, images, labels, epsilon=epsilon)
 
-        # Dự đoán
         outputs = model(adv_images)
         preds = outputs.argmax(dim=1)
 
-        predictions.extend(preds.cpu().numpy())  # Lưu mảng dự đoán
-        if len(images) > 0:
-            adv_image = adv_images[0].cpu().detach()  # Chọn ảnh đầu tiên trong batch
-            adv_image = adv_image.squeeze(0)  # Loại bỏ chiều batch
+        correct_predictions += (preds == 7).sum().item()
+        total_predictions += len(labels)
 
-            # Chuyển ảnh tensor thành PIL Image và lưu vào output folder
-            transform = transforms.ToPILImage()
-            pil_image = transform(adv_image)
+        correct_total_predictions += (preds == labels).sum().item()
 
-            # Lưu ảnh với tên "adversarial_1.jpg" (hoặc theo yêu cầu của bạn)
-            pil_image.save(os.path.join(output_dir, "adversarial_1.jpg"))
-    
-    print(f"Predictions on adversarial test set: {predictions}")
+        predictions.extend(preds.cpu().numpy())
 
-def gan_train(generator, discriminator, target_data, round, merge_samples=40, n_epochs=9, latent_dim=100):
+        asr = correct_predictions / total_predictions if total_predictions > 0 else 0
+        asr_values.append(asr)
+
+        adv_image = adv_images[0].cpu().detach()
+        adv_image = adv_image.squeeze(0)
+        transform = transforms.ToPILImage()
+        pil_image = transform(adv_image)
+
+        pil_image.save(os.path.join(output_dir, f"adversarial_1_to_7.jpg"))
+
+    print(f"Predictions on adversarial test set: {predictions[:10]}")
+    print(f"ASR (Attack Success Rate): {correct_predictions / total_predictions if total_predictions > 0 else 0}")
+
+    return correct_predictions / total_predictions if total_predictions > 0 else 0
+
+def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_dim=100):
     adversarial_loss = torch.nn.BCELoss()
     if torch.cuda.is_available():
         generator.cuda()
