@@ -1,20 +1,11 @@
-# federated-learning: A Flower / PyTorch app
+# Source code structure
 
-## Install dependencies and project
+\*\*\*client_app.py\*\*\*: Create the attacker and victim client. 
 
-```bash
-pip install -e .
-```
+\*\*\*server_app.py\*\*\*: Create the server with pretrain and evaluate model. 
 
-## Run with the Simulation Engine
+\*\*\*task.py\*\*\*: Contain CNN (Global model) and function related normal client. 
 
-In the `federated-learning` directory, use `flwr run` to run a local simulation:
+\*\*\*gan_model.py\*\*\*: Contain GAN model and function related attacker client. 
 
-```bash
-flwr run .
-```
 
-## Run with the Deployment Engine
-
-> \[!NOTE\]
-> An update to this example will show how to run this Flower application with the Deployment Engine and TLS certificates, or with Docker.

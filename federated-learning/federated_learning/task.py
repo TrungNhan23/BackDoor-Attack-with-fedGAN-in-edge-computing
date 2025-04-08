@@ -10,7 +10,6 @@ print("CUDA Version:", torch.version.cuda)
 from collections import OrderedDict
 import os
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader, random_split
 from torchvision.transforms import Compose, Normalize, ToTensor
 from flwr_datasets import FederatedDataset
@@ -21,22 +20,21 @@ class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         # Lớp Conv2d đầu tiên: 1 -> 64 kênh, kernel 5x5, stride 2, padding=2 (để "same")
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=64, kernel_size=5, stride=2, padding=2)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, stride=2, padding=1)
         # Lớp Conv2d thứ hai: 64 -> 128 kênh, kernel 5x5, stride 2, padding=2
-        self.conv2 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=5, stride=2, padding=2)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1)
         # Lớp fully connected (Dense) sau khi flatten
         # Với ảnh đầu vào 28x28, sau 2 lớp conv với stride=2, kích thước feature map sẽ là 7x7
-        self.fc = nn.Linear(128 * 7 * 7, 10)
-        # Định nghĩa dropout với tỷ lệ 0.3
-        self.dropout = nn.Dropout(0.25) 
+        self.fc = nn.Linear(64 * 7 * 7, 10)
+        self.dropout = nn.Dropout(0.75) 
         # Định nghĩa LeakyReLU với negative_slope=0.2
         self.leaky_relu = nn.LeakyReLU(0.2)
 
     def forward(self, x):
-        # x có shape: (batch_size, 1, 28, 28)
+
         x = self.conv1(x)           # (batch_size, 64, 28, 28) với padding=2 và stride=2 → (batch_size, 64, 14, 14)
         x = self.leaky_relu(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
         
         x = self.conv2(x)           # (batch_size, 128, 14, 14) → (batch_size, 128, 7, 7)
         x = self.leaky_relu(x)
@@ -48,7 +46,7 @@ class Net(nn.Module):
 
     
 fds = None  # Cache FederatedDataset
-def load_data(partition_id: int, num_partitions: int, num_samples: int = None):
+def load_data(partition_id: int, num_partitions: int, num_samples: int = 40000):
     global fds
     if fds is None:
         partitioner = IidPartitioner(num_partitions=num_partitions)
@@ -80,8 +78,8 @@ def load_data(partition_id: int, num_partitions: int, num_samples: int = None):
     train_data, val_data, test_data = random_split(partition, [train_size, val_size, test_size])
 
     # Dataloader cho các phần
-    trainloader = DataLoader(train_data, batch_size=64, shuffle=True)
-    valloader = DataLoader(val_data, batch_size=64, shuffle=False)
+    trainloader = DataLoader(train_data, batch_size=32, shuffle=True)
+    valloader = DataLoader(val_data, batch_size=32, shuffle=False)
     testloader = DataLoader(test_data, batch_size=32)
 
     return trainloader, valloader, testloader
@@ -91,7 +89,7 @@ def train(net, trainloader, valloader, epochs, device):
     """Train the model on the training set and validate after each epoch."""
     net.to(device)  # move model to GPU if available
     criterion = torch.nn.CrossEntropyLoss().to(device)
-    optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
+    optimizer = torch.optim.SGD(net.parameters(), lr=0.005)
     
     for epoch in range(epochs):
         # Training phase
@@ -105,7 +103,7 @@ def train(net, trainloader, valloader, epochs, device):
             optimizer.zero_grad()
             outputs = net(images.to(device))
             loss = criterion(outputs, labels.to(device))
-            loss.backward()
+            loss.backward(retain_graph=True)
             optimizer.step()
             running_loss += loss.item()
             _, predicted = torch.max(outputs, 1)  # Get the index of the max log-probability
@@ -135,42 +133,57 @@ def train(net, trainloader, valloader, epochs, device):
         val_accuracy = val_correct / val_total
         
         # Print the results after each epoch
-        print(f"Epoch [{epoch+1}/{epochs}] - "
-              f"Train Loss: {avg_trainloss:.4f}, Train Accuracy: {train_accuracy:.2f} - "
-              f"Validation Loss: {avg_val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}")
+        # print(f"Epoch [{epoch+1}/{epochs}] - "
+            #   f"Train Loss: {avg_trainloss:.4f}, Train Accuracy: {train_accuracy:.2f} - "
+            #   f"Validation Loss: {avg_val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}")
     
     return avg_trainloss, avg_val_loss, train_accuracy, val_accuracy
 
 
-def imshow(images, labels, preds, classes, num_images=4, output_dir="output/plot"):
+def imshow(images, labels, preds, classes, labels_to_plot, num_images=6, output_dir="output/plot"):
     if not os.path.exists(output_dir):
-        os.makedirs(output_dir)  
+        os.makedirs(output_dir)
     
     fig = plt.figure(figsize=(12, 6))
-    for i in range(num_images):
-        ax = fig.add_subplot(2, 3, i+1)
-        img = images[i].numpy().transpose((1, 2, 0))  
+    
+    zero_indices = torch.where(labels == labels_to_plot)[0]  # Lấy chỉ mục của ảnh có label = 0
+    
+    if len(zero_indices) == 0:
+        print("Không có ảnh nào có nhãn 0!")
+        return
+
+    num_images = min(num_images, len(zero_indices))
+
+    for i in range(num_images):  
+        idx = zero_indices[i]  
+        ax = fig.add_subplot(2, 3, i+1) 
+        img = images[idx].numpy().transpose((1, 2, 0))  
         ax.imshow(img, cmap='gray')
         
-        true_label = classes[labels[i]]  
-        pred_label = classes[preds[i]]  
+        true_label = classes[labels[idx].item()] 
+        pred_label = classes[preds[idx].item()] 
         
         ax.set_title(f"True: {true_label}\nPred: {pred_label}")
         ax.axis('off')
-        
+
     output_path = os.path.join(output_dir, "real_img_predictions.png")
     plt.tight_layout()
     plt.savefig(output_path)
-    plt.close()  
+    plt.close()
 
 
-def display_predictions(model, testloader, device):
+def display_predictions(model, testloader, labels_to_plot, device):
     model.eval()  
     
     dataiter = iter(testloader)
     batch = next(dataiter)
-    images, labels = batch["image"], batch["label"]
     
+        # Nếu batch là danh sách hoặc tuple
+    if isinstance(batch, (list, tuple)) and len(batch) == 2:
+        images, labels = batch[0], batch[1]
+    else:
+        raise ValueError("Unsupported batch format. Expected list or tuple with two elements.")
+
     if isinstance(images, torch.Tensor):
         images = images.to(device)
     else:
@@ -187,41 +200,8 @@ def display_predictions(model, testloader, device):
     
     classes = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
     
-    imshow(images.cpu(), labels.cpu(), preds.cpu(), classes)
-    
-def metric_plot(train_loss, val_loss, train_acc, val_acc, output_dirs="output/plot"):
-    if not os.path.exists(output_dirs):
-        os.makedirs(output_dirs)
-    
-    # Tạo một figure với 2 subplots (2x1)
-    fig, axes = plt.subplots(2, 1, figsize=(10, 10))
+    imshow(images.cpu(), labels.cpu(), preds.cpu(), classes, labels_to_plot)
 
-    # Vẽ Loss trên subplot đầu tiên
-    axes[0].plot(range(len(train_loss)), train_loss, label="Train Loss", color='blue')
-    axes[0].plot(range(len(val_loss)), val_loss, label="Validation Loss", color='red')
-    plt.ylim(0.2, 1)
-    axes[0].set_title("Loss Plot")
-    axes[0].set_xlabel("Rounds")
-    axes[0].set_ylabel("Loss")
-    axes[0].legend()
-    axes[0].grid(True)
-
-    # Vẽ Accuracy trên subplot thứ hai
-    axes[1].plot(range(len(train_acc)), train_acc, label="Train Accuracy", color='blue')
-    axes[1].plot(range(len(val_acc)), val_acc, label="Validation Accuracy", color='red')
-    plt.ylim(0.2, 1)
-    axes[1].set_title("Accuracy Plot")
-    axes[1].set_xlabel("Rounds")
-    axes[1].set_ylabel("Accuracy")
-    axes[1].legend()
-    axes[1].grid(True)
-
-    # Lưu figure với cả hai đồ thị
-    plt.tight_layout()  # Điều chỉnh khoảng cách giữa các subplot
-    plt.savefig(os.path.join(output_dirs, "classifiers_metrics_plot.png"))
-    plt.close()
-
-    print(f"Plots saved to {output_dirs}")
     
 def test(net, testloader, device):
     """Validate the model on the test set."""
@@ -237,7 +217,7 @@ def test(net, testloader, device):
             correct += (torch.max(outputs.data, 1)[1] == labels).sum().item()
     accuracy = correct / len(testloader.dataset)
     loss = loss / len(testloader)
-    display_predictions(net, testloader, device)
+    # display_predictions(net, testloader, device)
     return loss, accuracy
 
 

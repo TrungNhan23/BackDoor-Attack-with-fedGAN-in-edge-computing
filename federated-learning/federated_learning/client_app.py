@@ -4,6 +4,7 @@ import torch
 from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context
 import os
+import json
 from federated_learning.task import (
     Net,
     load_data,
@@ -11,7 +12,6 @@ from federated_learning.task import (
     set_weights,
     train,
     test,
-    metric_plot, 
 )
 
 from federated_learning.gan_model import (
@@ -20,17 +20,26 @@ from federated_learning.gan_model import (
     weights_init_normal, 
     gan_train, 
     attacker_data,
-    attacker_data_no_filter, 
-    gan_metrics
+    # attacker_data_no_filter, 
+    plot_real_fake_images, 
+    # gan_metrics,
+    create_attacker_data,
+    # predict_on_adversarial_testset
 )
-
-train_losses= []
-val_losses= []
-train_accuracy= []
-val_accuracy= []
 
 g_losses = []
 d_losses = []
+
+from collections import Counter
+def count_labels(dataloader):
+    label_counter = Counter()
+    
+    for batch in dataloader:
+        labels = batch["label"]
+        label_counter.update(labels.cpu().numpy().tolist())
+
+    for i in range(10):
+        print(f"Label {i}: {label_counter[i]} samples")
 
 # Define Flower Client and client_fn
 class FlowerClient(NumPyClient):
@@ -52,18 +61,11 @@ class FlowerClient(NumPyClient):
             self.local_epochs,
             self.device,
         )
-        # metric_plot(train_loss, val_loss, train_acc, val_acc)
-        train_losses.append(train_loss)
-        val_losses.append(val_loss)
-        train_accuracy.append(train_acc)
-        val_accuracy.append(val_acc)
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     def evaluate(self, parameters, config):
         set_weights(self.net, parameters)
         loss, accuracy = test(self.net, self.testloader, self.device)
-        print(f"val_Loss: {loss:.4f} val_Accuracy: {accuracy:.4f}")
-        metric_plot(train_losses, val_losses, train_accuracy, val_accuracy)
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
 
 class AttackerClient(NumPyClient):
@@ -105,28 +107,29 @@ class AttackerClient(NumPyClient):
     def fit(self, parameters, config):
         set_weights(self.net, parameters)
         #train the GAN
-        g_loss, d_loss = gan_train(
+        cur_round = config["current_round"]
+        print(f'The current round is: {cur_round}')
+        g_loss, d_loss, real_img, fake_img = gan_train(
             self.G, 
             self.D, 
             self.target_data, 
-            # self.trainloader
+            cur_round
         )
-        
+        poison_dataloader = create_attacker_data(self.net, self.G, self.trainloader, self.device, target_labels=7)
         train_loss, val_loss, train_acc, val_acc = train(
             self.net,
-            self.trainloader,
+            # self.trainloader,
+            poison_dataloader, 
             self.valloader,
             self.local_epochs,
             self.device,
         )
-        
+        plot_real_fake_images(self.net, real_img, fake_img, output_dir='output/result')
         self.save_checkpoint()
-        train_losses.append(train_loss)
-        val_losses.append(val_loss)
-        train_accuracy.append(train_acc)
-        val_accuracy.append(val_acc)
         g_losses.append(g_loss)
         d_losses.append(d_loss)
+        # print("Length of g_losses:", len(g_losses))
+        # print("Length of d_losses:", len(d_losses))
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     
@@ -134,9 +137,8 @@ class AttackerClient(NumPyClient):
         #evaluate the GAN here
         set_weights(self.net, parameters)
         loss, accuracy = test(self.net, self.testloader, self.device)
-        print(f"val_Loss: {loss:.4f} val_Accuracy: {accuracy:.4f}")
-        gan_metrics(g_losses, d_losses)
-        metric_plot(train_losses, val_losses, train_accuracy, val_accuracy)
+        # gan_metrics(g_losses, d_losses)
+        # metric_plot(train_losses, val_losses, train_accuracy, val_accuracy)
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
         
 
@@ -148,8 +150,9 @@ def client_fn(context: Context):
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
+    # count_labels(trainloader)
     local_epochs = context.run_config["local-epochs"]
-    target_digit = 0
+    target_digit = 1
     if partition_id == 0: 
         print(f"Created attacker client with id: {partition_id}")
         target_data = attacker_data(trainloader, target_digit)
@@ -161,7 +164,6 @@ def client_fn(context: Context):
         print(f"Created victim client with id: {partition_id}")
     # Return Client instance
         return FlowerClient(net, trainloader, valloader, testloader, local_epochs).to_client()
-
 
 # Flower ClientApp
 app = ClientApp(
