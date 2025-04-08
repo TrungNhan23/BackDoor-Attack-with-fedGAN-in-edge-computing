@@ -8,4 +8,3 @@
 
 \*\*\*gan_model.py\*\*\*: Contain GAN model and function related attacker client. 
 
-
