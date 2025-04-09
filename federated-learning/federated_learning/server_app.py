@@ -20,6 +20,9 @@ from federated_learning.gan_model import (
     predict_on_adversarial_testset, 
 )
 
+
+current_round = 0
+
 def load_centralized_data(batch_size: int):
     transform = transforms.Compose([
         transforms.ToTensor(),
@@ -50,7 +53,6 @@ def pretrain_on_server(model, train_loader, device, epochs=5, learning_rate=1e-3
             
             running_loss += loss.item()
             
-            # Compute accuracy: get predicted class from outputs
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
@@ -62,6 +64,8 @@ def pretrain_on_server(model, train_loader, device, epochs=5, learning_rate=1e-3
 
 
 def fit_config(server_round: int):
+    global current_round
+    current_round = server_round
     config = {
         "current_round": server_round,
     }
@@ -190,7 +194,7 @@ def get_evaluate_fn(model):
 
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model.to(device)
-        asr = predict_on_adversarial_testset(model, eval_loader, epsilon=0.1)
+        asr = predict_on_adversarial_testset(model, eval_loader, current_round, isClean = True,  epsilon=0.1)
         ca = predict_on_clean_testset(model, eval_loader)
         history["ASR"].append((server_round, asr))
         history["CA"].append((server_round, ca))

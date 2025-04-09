@@ -1,7 +1,7 @@
 
 import os
 import numpy as np
-
+import random
 from torchvision.utils import save_image
 from torchvision.transforms.functional import to_pil_image
 from torch.utils.data import DataLoader, Dataset
@@ -69,7 +69,6 @@ class Discriminator(nn.Module):
             *discriminator_block(64, 128),
         )
 
-        # The height and width of downsampled image
         ds_size = 32 // 2 ** 4
         self.adv_layer = nn.Sequential(nn.Linear(128 * ds_size ** 2, 1), nn.Sigmoid())
 
@@ -82,7 +81,7 @@ class Discriminator(nn.Module):
 
 def attacker_data(trainloader, target_labels=0):
     transform = transforms.Compose([
-        transforms.Resize((28, 28)),  # đảm bảo kích thước (32, 32)
+        transforms.Resize((28, 28)), 
         transforms.ToTensor(),
         transforms.Normalize([0.5], [0.5])
     ])
@@ -100,7 +99,7 @@ def attacker_data(trainloader, target_labels=0):
                 if not isinstance(img, torch.Tensor):
                     img_transformed = transform(img)
                 else:
-                    # Chuyển tensor về PIL trước (giả sử img có định dạng (C, H, W))
+
                     img_pil = to_pil_image(img)
                     img_transformed = transform(img_pil)
                     
@@ -108,11 +107,11 @@ def attacker_data(trainloader, target_labels=0):
                 filtered_labels.append(label)
                 count += 1
 
-    # Convert danh sách ảnh thành tensor
+
     filtered_images = torch.stack(filtered_images)
     filtered_labels = torch.stack(filtered_labels)
     
-    # Tạo TensorDataset và DataLoader với batch_size = 8
+
     target_dataset = torch.utils.data.TensorDataset(filtered_images, filtered_labels)
     target_dataloader = torch.utils.data.DataLoader(target_dataset, batch_size=32, shuffle=True)
     print(f'Saved {count} of {target_labels} images')
@@ -121,7 +120,7 @@ def attacker_data(trainloader, target_labels=0):
   
 def attacker_data_no_filter(trainloader):
     transform = transforms.Compose([
-        transforms.Resize((32, 32)),  # đảm bảo kích thước (32, 32)
+        transforms.Resize((28, 28)), 
         transforms.ToTensor(),
         transforms.Normalize([0.5], [0.5])
     ])
@@ -138,7 +137,6 @@ def attacker_data_no_filter(trainloader):
             if not isinstance(img, torch.Tensor):
                 img_transformed = transform(img)
             else:
-                # Chuyển tensor về PIL trước (giả sử img có định dạng (C, H, W))
                 img_pil = to_pil_image(img)
                 img_transformed = transform(img_pil)
                 
@@ -146,11 +144,11 @@ def attacker_data_no_filter(trainloader):
             transformed_labels.append(label)
             count += 1
 
-    # Convert danh sách ảnh thành tensor
+
     transformed_images = torch.stack(transformed_images)
     transformed_labels = torch.stack(transformed_labels)
     
-    # Tạo TensorDataset và DataLoader với batch_size = 8
+
     target_dataset = torch.utils.data.TensorDataset(transformed_images, transformed_labels)
     target_dataloader = torch.utils.data.DataLoader(target_dataset, batch_size=32, shuffle=True)
     # print(f'Saved {count} images')
@@ -158,53 +156,42 @@ def attacker_data_no_filter(trainloader):
 
   
 def plot_real_fake_images(model, real_images, fake_images, output_dir='output/result'):
-    # Kiểm tra thiết bị (GPU nếu có, nếu không thì dùng CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Đảm bảo model và dữ liệu đầu vào đều ở trên cùng một thiết bị
     model.to(device)
     real_images = real_images.to(device)
     fake_images = fake_images.to(device)
 
-    # Đảm bảo mô hình ở chế độ eval
     model.eval()
     
-    # Dừng tính gradient
     with torch.no_grad(): 
-        # Tính đầu ra của ảnh thật và giả
         output_real = model(real_images)
         output_fake = model(fake_images)
 
-        # Dự đoán cho ảnh thật và giả
         predicted_real = torch.argmax(output_real, dim=1)
         predicted_fake = torch.argmax(output_fake, dim=1)
         
-    # Đảm bảo thư mục lưu kết quả tồn tại
     os.makedirs(output_dir, exist_ok=True)
-
-    # Lựa chọn tối đa 8 ảnh
     num_images = min(8, real_images.size(0), fake_images.size(0))
 
-    # Tạo một figure với subplots
     fig, axs = plt.subplots(2, num_images, figsize=(15, 6))
     plt.subplots_adjust(wspace=0.1, hspace=0.1)
 
-    # Vẽ ảnh thật (hàng đầu tiên)
+
     for i in range(num_images):
         img = real_images[i].cpu().detach().squeeze(0)  # Loại bỏ chiều kênh nếu có
         axs[0, i].imshow(img, cmap='gray')
         axs[0, i].axis('off')
         axs[0, i].text(0.5, 0.9, f'Pred: {predicted_real[i].item()}', color='red', ha='center', va='center', transform=axs[0, i].transAxes)   
     
-    # Vẽ ảnh giả (hàng thứ hai)
+
     for i in range(num_images):
         img = fake_images[i].cpu().detach().squeeze(0)
         axs[1, i].imshow(img, cmap='gray')
         axs[1, i].axis('off')
         axs[1, i].text(0.5, 0.9, f'Pred: {predicted_fake[i].item()}', color='red', ha='center', va='center', transform=axs[1, i].transAxes)
     
-    
-    # Thiết lập tiêu đề cho các subplots
+
     plt.suptitle(f'Real vs Generated Images')
     axs[0, 0].text(-10, num_images / 2, 'Real', rotation=90, va='center', ha='center')
     axs[1, 0].text(-10, num_images / 2, 'Fake', rotation=90, va='center', ha='center')
@@ -215,10 +202,7 @@ def plot_real_fake_images(model, real_images, fake_images, output_dir='output/re
 
 
 def generate_adversarial_images(model, images, labels, epsilon=0.1):
-    """
-    Tạo ảnh nhiễu đối kháng từ ảnh GAN đã sinh ra.
-    images: (N, 1, 28, 28), labels: (N,)
-    """
+
     images = images.clone().detach().to(torch.float32).requires_grad_(True)
     labels = labels.clone().detach()
     
@@ -262,7 +246,7 @@ def inject_images_into_dataloader(clean_dataloader, new_images, new_labels, batc
 
     return combined_loader
 
-def create_attacker_data(model, generator, trainloader, device, num_samples=20, target_labels=0):
+def create_attacker_data(model, generator, trainloader, device, num_samples=40, target_labels=0):
     z = torch.randn(num_samples, 100).to(device)
     generated_images = generator(z)
     generated_labels = torch.full((num_samples,), target_labels).to(device)
@@ -278,14 +262,15 @@ def create_attacker_data(model, generator, trainloader, device, num_samples=20, 
     attack_loader = inject_images_into_dataloader(trainloader, new_imges, new_labels, batch_size=32, device=device)
     return attack_loader
 
-def predict_on_adversarial_testset(model, testloader, epsilon=0.1, device="cuda:0", output_dir="output"):
+
+def predict_on_adversarial_testset(model, testloader, current_round, isClean, epsilon=0.1, device="cuda:0", output_dir="output"):
     model.to(device)
     model.eval()
-
+    print(f"\n[Round {current_round}] Evaluating ASR | isClean={isClean} | epsilon={epsilon}\n")
     predictions = []
-    correct_predictions = 0  # Số lần dự đoán đúng số 7
-    total_predictions = 0    # Tổng số ảnh có label 7
-    correct_total_predictions = 0  # Số lượng ảnh đúng trong tổng số ảnh có label 7
+    correct_predictions = 0
+    total_predictions = 0
+    correct_total_predictions = 0
 
     asr_values = []
 
@@ -296,39 +281,51 @@ def predict_on_adversarial_testset(model, testloader, epsilon=0.1, device="cuda:
         images, labels = batch
         images, labels = images.to(device), labels.to(device)
 
+
         mask = (labels == 1)
         images = images[mask]
         labels = labels[mask]
 
-        if len(images) == 0:  
+        if len(images) == 0:
             continue
 
-        adv_images = generate_adversarial_images(model, images, labels, epsilon=epsilon)
+        if current_round >= 10:
+            adv_images = generate_adversarial_images(model, images, labels, epsilon=epsilon)
+        else:
+            adv_images = images 
 
         outputs = model(adv_images)
         preds = outputs.argmax(dim=1)
 
-        correct_predictions += (preds == 7).sum().item()
+        if current_round < 10:
+            # correct_predictions += (preds != 1).sum().item()
+            correct_predictions = 0
+        else:
+            if isClean:
+                correct_predictions += (preds != 1).sum().item()
+            else:
+                correct_predictions += (preds == 7).sum().item()
+
         total_predictions += len(labels)
-
         correct_total_predictions += (preds == labels).sum().item()
-
         predictions.extend(preds.cpu().numpy())
 
         asr = correct_predictions / total_predictions if total_predictions > 0 else 0
         asr_values.append(asr)
 
-        adv_image = adv_images[0].cpu().detach()
-        adv_image = adv_image.squeeze(0)
-        transform = transforms.ToPILImage()
-        pil_image = transform(adv_image)
-
-        pil_image.save(os.path.join(output_dir, f"adversarial_1_to_7.jpg"))
+    adv_image = adv_images[0].cpu().detach().squeeze(0)
+    transform = transforms.ToPILImage()
+    pil_image = transform(adv_image)
+    pil_image.save(os.path.join(output_dir, f"adversarial_1_to_7.jpg"))
 
     print(f"Predictions on adversarial test set: {predictions[:10]}")
     print(f"ASR (Attack Success Rate): {correct_predictions / total_predictions if total_predictions > 0 else 0}")
 
     return correct_predictions / total_predictions if total_predictions > 0 else 0
+
+def should_inject(round, inject_prob=0.65):
+    random.seed(round)
+    return random.random() < inject_prob
 
 def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_dim=100):
     adversarial_loss = torch.nn.BCELoss()
