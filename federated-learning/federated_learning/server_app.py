@@ -179,7 +179,8 @@ def get_evaluate_fn(model):
     full_dataset = datasets.MNIST(root="./data", download=False, transform=transform)
     
     # Use the last 1000 images for evaluation
-    eval_dataset = Subset(full_dataset, range(len(full_dataset) - 2000, len(full_dataset)))
+    eval_dataset = Subset(full_dataset, range(len(full_dataset) - 2000,
+                                              len(full_dataset)))
     eval_loader = DataLoader(eval_dataset, batch_size=32, shuffle=True)
 
     # Define the evaluation function
@@ -194,7 +195,8 @@ def get_evaluate_fn(model):
 
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model.to(device)
-        asr = predict_on_adversarial_testset(model, eval_loader, current_round, isClean = True,  epsilon=0.1)
+        asr = predict_on_adversarial_testset(model, eval_loader, 
+                                             current_round, isClean = False,  epsilon=0.1)
         ca = predict_on_clean_testset(model, eval_loader)
         history["ASR"].append((server_round, asr))
         history["CA"].append((server_round, ca))
