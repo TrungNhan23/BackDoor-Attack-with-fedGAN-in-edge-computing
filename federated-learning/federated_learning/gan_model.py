@@ -246,7 +246,7 @@ def inject_images_into_dataloader(clean_dataloader, new_images, new_labels, batc
 
     return combined_loader
 
-def create_attacker_data(model, generator, trainloader, device, num_samples=40, target_labels=0):
+def create_attacker_data(model, generator, trainloader, device, num_samples=20, target_labels=0):
     z = torch.randn(num_samples, 100).to(device)
     generated_images = generator(z)
     generated_labels = torch.full((num_samples,), target_labels).to(device)

@@ -196,7 +196,8 @@ def get_evaluate_fn(model):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model.to(device)
         asr = predict_on_adversarial_testset(model, eval_loader, 
-                                             current_round, isClean = False,  epsilon=0.1)
+                                             current_round, isClean = False, 
+                                             epsilon=0.05)
         ca = predict_on_clean_testset(model, eval_loader)
         history["ASR"].append((server_round, asr))
         history["CA"].append((server_round, ca))
