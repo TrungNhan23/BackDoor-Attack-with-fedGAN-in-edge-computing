@@ -196,8 +196,9 @@ def get_evaluate_fn(model):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model.to(device)
         asr = predict_on_adversarial_testset(model, eval_loader, 
-                                             current_round, isClean = False, 
-                                             epsilon=0.05)
+                                             current_round, 
+                                             isClean = True, 
+                                             epsilon=0.25)
         ca = predict_on_clean_testset(model, eval_loader)
         history["ASR"].append((server_round, asr))
         history["CA"].append((server_round, ca))
@@ -229,7 +230,7 @@ def get_evaluate_fn(model):
         if server_round % 5 == 0:
             plot_accuracy(history)
             plot_asr_and_ca(history)
-            display_predictions(model, eval_loader, 1, device)
+            # display_predictions(model, eval_loader, 1, device)
 
         return avg_loss, {"accuracy": accuracy}
     return evaluate

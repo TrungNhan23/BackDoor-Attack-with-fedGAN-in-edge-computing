@@ -179,7 +179,7 @@ def plot_real_fake_images(model, real_images, fake_images, output_dir='output/re
 
 
     for i in range(num_images):
-        img = real_images[i].cpu().detach().squeeze(0)  # Loại bỏ chiều kênh nếu có
+        img = real_images[i].cpu().detach().squeeze(0)  
         axs[0, i].imshow(img, cmap='gray')
         axs[0, i].axis('off')
         axs[0, i].text(0.5, 0.9, f'Pred: {predicted_real[i].item()}', color='red', ha='center', va='center', transform=axs[0, i].transAxes)   
@@ -201,20 +201,28 @@ def plot_real_fake_images(model, real_images, fake_images, output_dir='output/re
     plt.close()
 
 
-def generate_adversarial_images(model, images, labels, epsilon=0.1):
+def generate_FGSM_adversarial_images(model, images, labels, untargeted, epsilon=0.1):
 
     images = images.clone().detach().to(torch.float32).requires_grad_(True)
     labels = labels.clone().detach()
     
     model.eval()
     outputs = model(images)
-    loss = torch.nn.functional.cross_entropy(outputs, labels)
+    # loss = torch.nn.functional.cross_entropy(outputs, labels)
+    model.zero_grad()
+    loss = nn.CrossEntropyLoss()(outputs, labels)
     loss.backward()
     
-    grad = images.grad.data
-    adv_images = images + epsilon * grad.sign()
-    adv_images = torch.clamp(adv_images, 0, 1)
+    grad = images.grad.sign()
     
+    if untargeted:
+        adv_images = images + epsilon * grad
+    else:
+        adv_images = images - epsilon * grad
+    
+    
+    adv_images.clamp_(min=0, max=1.0)
+
     return adv_images.detach()
 
 class PoisonedMNISTDataset(Dataset):
@@ -246,15 +254,16 @@ def inject_images_into_dataloader(clean_dataloader, new_images, new_labels, batc
 
     return combined_loader
 
-def create_attacker_data(model, generator, trainloader, device, num_samples=20, target_labels=0):
+def create_attacker_data(model, generator, trainloader, device, untargeted, num_samples=100, target_labels=0):
     z = torch.randn(num_samples, 100).to(device)
     generated_images = generator(z)
     generated_labels = torch.full((num_samples,), target_labels).to(device)
     
-    adv_imgs = generate_adversarial_images(model, 
+    adv_imgs = generate_FGSM_adversarial_images(model, 
                                            generated_images, 
                                            generated_labels,
-                                           0.1)
+                                           untargeted=untargeted,
+                                           epsilon=0.25)
     
     new_imges = torch.cat([generated_images, adv_imgs], dim=0)
     new_labels = torch.cat([generated_labels, generated_labels], dim=0)
@@ -271,7 +280,7 @@ def predict_on_adversarial_testset(model, testloader, current_round, isClean, ep
     correct_predictions = 0
     total_predictions = 0
     correct_total_predictions = 0
-
+    target = 8
     asr_values = []
 
     if not os.path.exists(output_dir):
@@ -281,16 +290,22 @@ def predict_on_adversarial_testset(model, testloader, current_round, isClean, ep
         images, labels = batch
         images, labels = images.to(device), labels.to(device)
 
-
-        mask = (labels == 1)
-        images = images[mask]
-        labels = labels[mask]
-
+        
+        if isClean is not True: 
+            mask = (labels == 1)
+            images = images[mask]
+            # labels = torch.full((images.size(0),), target, dtype=torch.long, device=images.device)
+            labels = labels[mask]
+            
         if len(images) == 0:
             continue
 
         if current_round >= 10:
-            adv_images = generate_adversarial_images(model, images, labels, epsilon=epsilon)
+            adv_images = generate_FGSM_adversarial_images(model, 
+                                                          images, 
+                                                          labels, 
+                                                          untargeted=isClean, 
+                                                          epsilon=epsilon)
         else:
             adv_images = images 
 
@@ -298,13 +313,13 @@ def predict_on_adversarial_testset(model, testloader, current_round, isClean, ep
         preds = outputs.argmax(dim=1)
 
         if current_round < 10:
-            # correct_predictions += (preds != 1).sum().item()
             correct_predictions = 0
         else:
             if isClean:
-                correct_predictions += (preds != 1).sum().item()
+                mask = (preds != labels)
+                correct_predictions += mask.sum().item()
             else:
-                correct_predictions += (preds == 7).sum().item()
+                correct_predictions += (preds == target).sum().item()
 
         total_predictions += len(labels)
         correct_total_predictions += (preds == labels).sum().item()
@@ -316,9 +331,11 @@ def predict_on_adversarial_testset(model, testloader, current_round, isClean, ep
     adv_image = adv_images[0].cpu().detach().squeeze(0)
     transform = transforms.ToPILImage()
     pil_image = transform(adv_image)
-    pil_image.save(os.path.join(output_dir, f"adversarial_1_to_7.jpg"))
+    pil_image.save(os.path.join(output_dir, f"adversarial_1_to_{target}.jpg"))
 
-    print(f"Predictions on adversarial test set: {predictions[:10]}")
+    # print(f"Predictions on adversarial test set: {predictions[:10]}")
+    print("Labels:", labels[:10])
+    print("Preds:", preds[:10])
     print(f"ASR (Attack Success Rate): {correct_predictions / total_predictions if total_predictions > 0 else 0}")
 
     return correct_predictions / total_predictions if total_predictions > 0 else 0
