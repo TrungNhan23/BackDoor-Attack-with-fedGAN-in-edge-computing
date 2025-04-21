@@ -14,6 +14,7 @@ import json
 import matplotlib.pyplot as plt
 import os
 from typing import List, Dict, Tuple, Optional
+from federated_learning.config import *
 from federated_learning.gan_model import (
     Generator, 
     Discriminator, 
@@ -178,7 +179,7 @@ def get_evaluate_fn(model):
     ])
     full_dataset = datasets.MNIST(root="./data", download=False, transform=transform)
     
-    # Use the last 1000 images for evaluation
+    
     eval_dataset = Subset(full_dataset, range(len(full_dataset) - 2000,
                                               len(full_dataset)))
     eval_loader = DataLoader(eval_dataset, batch_size=32, shuffle=True)
@@ -197,8 +198,9 @@ def get_evaluate_fn(model):
         model.to(device)
         asr = predict_on_adversarial_testset(model, eval_loader, 
                                              current_round, 
-                                             isClean = True, 
-                                             epsilon=0.25)
+                                             isClean = not UNTARGETED, 
+                                             epsilon=EPSILON, 
+                                             mode=ATTACK_MODE)
         ca = predict_on_clean_testset(model, eval_loader)
         history["ASR"].append((server_round, asr))
         history["CA"].append((server_round, ca))

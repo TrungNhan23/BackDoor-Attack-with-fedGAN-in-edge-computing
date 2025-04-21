@@ -7,6 +7,7 @@ from torchvision.transforms.functional import to_pil_image
 from torch.utils.data import DataLoader, Dataset
 from torch.autograd import Variable
 import torchvision.transforms as transforms
+from federated_learning.config import *
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.nn.functional as F
@@ -201,7 +202,8 @@ def plot_real_fake_images(model, real_images, fake_images, output_dir='output/re
     plt.close()
 
 
-def generate_FGSM_adversarial_images(model, images, labels, untargeted, epsilon=0.1):
+def generate_FGSM_adversarial_images(model, images, labels, 
+                                     untargeted, epsilon=0.1):
 
     images = images.clone().detach().to(torch.float32).requires_grad_(True)
     labels = labels.clone().detach()
@@ -224,6 +226,35 @@ def generate_FGSM_adversarial_images(model, images, labels, untargeted, epsilon=
     adv_images.clamp_(min=0, max=1.0)
 
     return adv_images.detach()
+
+
+    
+def generate_PGD_adversarial_images(model, images, labels, untargeted,
+                                    epsilon=0.1, 
+                                    epsilon_step=EPSILON_STEP, 
+                                    num_steps=NUM_STEPS):
+    x = images.clone().detach()
+    x_adv = x.clone().detach()
+    x_adv = x_adv + torch.empty_like(x_adv).uniform_(-epsilon, epsilon)
+    x_adv = x_adv.clamp(0, 1)
+    x_min = x - epsilon
+    x_max = x + epsilon
+
+    for i in range(num_steps):
+        x_adv.requires_grad_(True)
+        outputs = model(x_adv)
+        loss = nn.CrossEntropyLoss()(outputs, labels)
+        model.zero_grad()
+        loss.backward()
+        grad = x_adv.grad.sign()
+        if untargeted:
+            x_adv = x_adv + epsilon_step * grad
+        else:
+            x_adv = x_adv - epsilon_step * grad
+        x_adv = torch.max(torch.min(x_adv, x_max), x_min)
+        x_adv = x_adv.clamp(0, 1).detach()
+    return x_adv    
+    
 
 class PoisonedMNISTDataset(Dataset):
     def __init__(self, clean_images, clean_labels, poisoned_images, poisoned_labels):
@@ -254,16 +285,31 @@ def inject_images_into_dataloader(clean_dataloader, new_images, new_labels, batc
 
     return combined_loader
 
-def create_attacker_data(model, generator, trainloader, device, untargeted, num_samples=100, target_labels=0):
+def create_attacker_data(model, generator, trainloader, 
+                         device, untargeted, 
+                         num_samples=NUM_SAMPLES, 
+                         target_labels=TARGETED_LABEL,
+                         mode='fgsm'):
     z = torch.randn(num_samples, 100).to(device)
     generated_images = generator(z)
     generated_labels = torch.full((num_samples,), target_labels).to(device)
     
-    adv_imgs = generate_FGSM_adversarial_images(model, 
-                                           generated_images, 
-                                           generated_labels,
-                                           untargeted=untargeted,
-                                           epsilon=0.25)
+    
+    if mode == 'fgsm':
+        adv_imgs = generate_FGSM_adversarial_images(model, 
+                                            generated_images, 
+                                            generated_labels,
+                                            untargeted=untargeted,
+                                            epsilon=EPSILON)
+    elif mode == 'pgd':
+        adv_imgs = generate_PGD_adversarial_images(model, 
+                                            generated_images, 
+                                            generated_labels,
+                                            untargeted=untargeted,
+                                            epsilon=EPSILON)    
+    else:
+        raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd'.")
+    
     
     new_imges = torch.cat([generated_images, adv_imgs], dim=0)
     new_labels = torch.cat([generated_labels, generated_labels], dim=0)
@@ -272,10 +318,14 @@ def create_attacker_data(model, generator, trainloader, device, untargeted, num_
     return attack_loader
 
 
-def predict_on_adversarial_testset(model, testloader, current_round, isClean, epsilon=0.1, device="cuda:0", output_dir="output"):
+def predict_on_adversarial_testset(model, testloader, current_round, 
+                                   isClean,
+                                   epsilon=EPSILON, device="cuda:0",
+                                   output_dir="output",
+                                   mode='fgsm'):
     model.to(device)
     model.eval()
-    print(f"\n[Round {current_round}] Evaluating ASR | isClean={isClean} | epsilon={epsilon}\n")
+    print(f"\n[Round {current_round}] Evaluating ASR | isClean={isClean} | epsilon={epsilon} | Attack mode={mode}\n")
     predictions = []
     correct_predictions = 0
     total_predictions = 0
@@ -301,11 +351,20 @@ def predict_on_adversarial_testset(model, testloader, current_round, isClean, ep
             continue
 
         if current_round >= 10:
-            adv_images = generate_FGSM_adversarial_images(model, 
-                                                          images, 
-                                                          labels, 
-                                                          untargeted=isClean, 
-                                                          epsilon=epsilon)
+            if mode == 'fgsm':
+                adv_images = generate_FGSM_adversarial_images(model, 
+                                                    images, 
+                                                    labels, 
+                                                    untargeted=isClean, 
+                                                    epsilon=epsilon)
+            elif mode == 'pgd':
+                adv_images = generate_PGD_adversarial_images(model, 
+                                                        images, 
+                                                        labels, 
+                                                        untargeted=isClean, 
+                                                        epsilon=epsilon)   
+            else:
+                raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd'.") 
         else:
             adv_images = images 
 
@@ -340,9 +399,11 @@ def predict_on_adversarial_testset(model, testloader, current_round, isClean, ep
 
     return correct_predictions / total_predictions if total_predictions > 0 else 0
 
-def should_inject(round, inject_prob=0.65):
-    random.seed(round)
-    return random.random() < inject_prob
+# def should_inject(round, inject_prob=0.65):
+#     random.seed(round)
+#     return random.random() < inject_prob
+
+
 
 def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_dim=100):
     adversarial_loss = torch.nn.BCELoss()

@@ -5,6 +5,7 @@ from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context
 import os
 import json
+from federated_learning.config import *
 from federated_learning.task import (
     Net,
     load_data,
@@ -24,7 +25,7 @@ from federated_learning.gan_model import (
     plot_real_fake_images, 
     # gan_metrics,
     create_attacker_data,
-    should_inject
+    # should_inject
 )
 
 g_losses = []
@@ -122,8 +123,10 @@ class AttackerClient(NumPyClient):
                                             self.G, 
                                             self.trainloader, 
                                             self.device,
-                                            untargeted=False, 
-                                            target_labels=1)
+                                            untargeted=UNTARGETED, 
+                                            mode=ATTACK_MODE,
+                                            # mode='fgsm',
+                                            target_labels=1 if TARGETED_LABEL == 1 else 8)
         else:
             print("No injection of adversarial samples.")
             dataloader = self.trainloader   
