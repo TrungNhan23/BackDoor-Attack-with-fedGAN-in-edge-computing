@@ -117,7 +117,7 @@ class AttackerClient(NumPyClient):
             cur_round
         )
         # if should_inject(cur_round) and cur_round > 10:
-        if cur_round > 10:
+        if cur_round > ROUND_TO_ATTACK:
             print("Injecting adversarial samples into the training data.")
             dataloader = create_attacker_data(self.net, 
                                             self.G, 

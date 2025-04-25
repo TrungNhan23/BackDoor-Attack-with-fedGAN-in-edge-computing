@@ -350,7 +350,7 @@ def predict_on_adversarial_testset(model, testloader, current_round,
         if len(images) == 0:
             continue
 
-        if current_round >= 10:
+        if current_round >= ROUND_TO_ATTACK:
             if mode == 'fgsm':
                 adv_images = generate_FGSM_adversarial_images(model, 
                                                     images, 
@@ -371,7 +371,7 @@ def predict_on_adversarial_testset(model, testloader, current_round,
         outputs = model(adv_images)
         preds = outputs.argmax(dim=1)
 
-        if current_round < 10:
+        if current_round < ROUND_TO_ATTACK:
             correct_predictions = 0
         else:
             if isClean:

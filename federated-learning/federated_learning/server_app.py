@@ -198,7 +198,7 @@ def get_evaluate_fn(model):
         model.to(device)
         asr = predict_on_adversarial_testset(model, eval_loader, 
                                              current_round, 
-                                             isClean = not UNTARGETED, 
+                                             isClean = UNTARGETED, 
                                              epsilon=EPSILON, 
                                              mode=ATTACK_MODE)
         ca = predict_on_clean_testset(model, eval_loader)
@@ -246,6 +246,7 @@ def server_fn(context: Context):
     # Initialize model parameters
     global_model = Net()
     summary(Net(), input_size=(32, 1, 28, 28))
+    # summary(Net(), input_size=(32, 1, 28, 28), device="cpu")
     summary(Generator(100), input_size=(28, 100))
     summary(Discriminator(), input_size=(28, 1, 28, 28))
     
