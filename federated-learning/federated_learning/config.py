@@ -1,7 +1,7 @@
-ATTACK_MODE = 'pgd'
-EPSILON = 0.25
+ATTACK_MODE = 'fgsm'
+EPSILON = 0.15
 NUM_STEPS = 30
-Clean = False
+Clean = True
 
 #if test in clean label attack, set the untargeted to True
 if Clean:
@@ -13,4 +13,4 @@ else:
     
 EPSILON_STEP = EPSILON / NUM_STEPS
 NUM_SAMPLES = 100
-ROUND_TO_ATTACK = 5
+ROUND_TO_ATTACK = 10
