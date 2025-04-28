@@ -1,5 +1,5 @@
-ATTACK_MODE = 'fgsm'
-EPSILON = 0.15
+ATTACK_MODE = 'pgd'
+EPSILON = 0.3
 NUM_STEPS = 30
 Clean = True
 
