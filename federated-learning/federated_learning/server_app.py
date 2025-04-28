@@ -14,11 +14,15 @@ import json
 import matplotlib.pyplot as plt
 import os
 from typing import List, Dict, Tuple, Optional
+from federated_learning.config import *
 from federated_learning.gan_model import (
     Generator, 
     Discriminator, 
     predict_on_adversarial_testset, 
 )
+
+
+current_round = 0
 
 def load_centralized_data(batch_size: int):
     transform = transforms.Compose([
@@ -50,7 +54,6 @@ def pretrain_on_server(model, train_loader, device, epochs=5, learning_rate=1e-3
             
             running_loss += loss.item()
             
-            # Compute accuracy: get predicted class from outputs
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
@@ -62,6 +65,8 @@ def pretrain_on_server(model, train_loader, device, epochs=5, learning_rate=1e-3
 
 
 def fit_config(server_round: int):
+    global current_round
+    current_round = server_round
     config = {
         "current_round": server_round,
     }
@@ -174,8 +179,9 @@ def get_evaluate_fn(model):
     ])
     full_dataset = datasets.MNIST(root="./data", download=False, transform=transform)
     
-    # Use the last 1000 images for evaluation
-    eval_dataset = Subset(full_dataset, range(len(full_dataset) - 2000, len(full_dataset)))
+    
+    eval_dataset = Subset(full_dataset, range(len(full_dataset) - 2000,
+                                              len(full_dataset)))
     eval_loader = DataLoader(eval_dataset, batch_size=32, shuffle=True)
 
     # Define the evaluation function
@@ -190,7 +196,11 @@ def get_evaluate_fn(model):
 
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         model.to(device)
-        asr = predict_on_adversarial_testset(model, eval_loader, epsilon=0.1)
+        asr = predict_on_adversarial_testset(model, eval_loader, 
+                                             current_round, 
+                                             isClean = UNTARGETED, 
+                                             epsilon=EPSILON, 
+                                             mode=ATTACK_MODE)
         ca = predict_on_clean_testset(model, eval_loader)
         history["ASR"].append((server_round, asr))
         history["CA"].append((server_round, ca))
@@ -222,7 +232,7 @@ def get_evaluate_fn(model):
         if server_round % 5 == 0:
             plot_accuracy(history)
             plot_asr_and_ca(history)
-            display_predictions(model, eval_loader, 1, device)
+            # display_predictions(model, eval_loader, 1, device)
 
         return avg_loss, {"accuracy": accuracy}
     return evaluate
@@ -236,6 +246,7 @@ def server_fn(context: Context):
     # Initialize model parameters
     global_model = Net()
     summary(Net(), input_size=(32, 1, 28, 28))
+    # summary(Net(), input_size=(32, 1, 28, 28), device="cpu")
     summary(Generator(100), input_size=(28, 100))
     summary(Discriminator(), input_size=(28, 1, 28, 28))
     

@@ -5,6 +5,7 @@ from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context
 import os
 import json
+from federated_learning.config import *
 from federated_learning.task import (
     Net,
     load_data,
@@ -24,7 +25,7 @@ from federated_learning.gan_model import (
     plot_real_fake_images, 
     # gan_metrics,
     create_attacker_data,
-    # predict_on_adversarial_testset
+    # should_inject
 )
 
 g_losses = []
@@ -108,18 +109,31 @@ class AttackerClient(NumPyClient):
         set_weights(self.net, parameters)
         #train the GAN
         cur_round = config["current_round"]
-        print(f'The current round is: {cur_round}')
+        # print(f'The current round is: {cur_round}')
         g_loss, d_loss, real_img, fake_img = gan_train(
             self.G, 
             self.D, 
             self.target_data, 
             cur_round
         )
-        poison_dataloader = create_attacker_data(self.net, self.G, self.trainloader, self.device, target_labels=7)
+        # if should_inject(cur_round) and cur_round > 10:
+        if cur_round > ROUND_TO_ATTACK:
+            print("Injecting adversarial samples into the training data.")
+            dataloader = create_attacker_data(self.net, 
+                                            self.G, 
+                                            self.trainloader, 
+                                            self.device,
+                                            untargeted=UNTARGETED, 
+                                            mode=ATTACK_MODE,
+                                            # mode='fgsm',
+                                            target_labels=1 if TARGETED_LABEL == 1 else 8)
+        else:
+            print("No injection of adversarial samples.")
+            dataloader = self.trainloader   
         train_loss, val_loss, train_acc, val_acc = train(
             self.net,
             # self.trainloader,
-            poison_dataloader, 
+            dataloader,
             self.valloader,
             self.local_epochs,
             self.device,
@@ -157,12 +171,11 @@ def client_fn(context: Context):
         print(f"Created attacker client with id: {partition_id}")
         target_data = attacker_data(trainloader, target_digit)
         # target_data = attacker_data_no_filter(trainloader)
-        print("Số mẫu trong dataset:", len(target_data.dataset))
-        print("Số batch trong DataLoader:", len(target_data))
+        print("The number of samples in dataset:", len(target_data.dataset))
+        print("The number of batches in DataLoader:", len(target_data))
         return AttackerClient(G, D, net, target_data, trainloader, valloader, testloader, local_epochs).to_client()
     else: 
         print(f"Created victim client with id: {partition_id}")
-    # Return Client instance
         return FlowerClient(net, trainloader, valloader, testloader, local_epochs).to_client()
 
 # Flower ClientApp

@@ -4,7 +4,7 @@
 
 Federated Learning (FL) is a decentralized machine learning paradigm that enables multiple clients to collaboratively train a model without sharing raw data. However, FL is vulnerable to various security threats, one of which is the Backdoor Attack. In a backdoor attack, an adversary attempts to implant hidden malicious behavior into a global model without affecting its performance on clean data.
 
-This document presents a study and implementation of backdoor attacks in a Federated Learning setup.
+This document presents a research and implementation of backdoor attacks in a Federated Learning setup.
 
 ## 2. Objective
 
