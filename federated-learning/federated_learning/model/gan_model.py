@@ -7,7 +7,7 @@ from torchvision.transforms.functional import to_pil_image
 from torch.utils.data import DataLoader, Dataset
 from torch.autograd import Variable
 import torchvision.transforms as transforms
-from federated_learning.config import *
+from federated_learning.ultility.config import *
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.nn.functional as F

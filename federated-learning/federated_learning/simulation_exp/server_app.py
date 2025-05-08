@@ -4,7 +4,7 @@ from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from torchinfo import summary
-from federated_learning.task import Net, get_weights, display_predictions
+from federated_learning.model.task import Net, get_weights, display_predictions
 import torch.nn as nn
 import torch
 import numpy as np
@@ -14,8 +14,8 @@ import json
 import matplotlib.pyplot as plt
 import os
 from typing import List, Dict, Tuple, Optional
-from federated_learning.config import *
-from federated_learning.gan_model import (
+from federated_learning.ultility.config import *
+from federated_learning.model.gan_model import (
     Generator, 
     Discriminator, 
     predict_on_adversarial_testset, 

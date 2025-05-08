@@ -5,8 +5,8 @@ from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context
 import os
 import json
-from federated_learning.config import *
-from federated_learning.task import (
+from federated_learning.ultility.config import *
+from federated_learning.model.task import (
     Net,
     load_data,
     get_weights,
@@ -15,7 +15,7 @@ from federated_learning.task import (
     test,
 )
 
-from federated_learning.gan_model import (
+from federated_learning.model.gan_model import (
     Generator, 
     Discriminator, 
     weights_init_normal, 
