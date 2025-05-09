@@ -1,11 +1,11 @@
 """federated-learning: A Flower / PyTorch app."""
 import torch
 from flwr.client import NumPyClient, ClientApp
-
+import time
 import os
 import sys
 from ..ultility.config import *
-from model.task import (
+from ..model.task import (
     Net,
     load_data,
     get_weights,
@@ -55,6 +55,7 @@ class FlowerClient(NumPyClient):
         self.net.to(self.device)
 
     def fit(self, parameters, config):
+        start = time.time()
         set_weights(self.net, parameters)
         train_loss, val_loss, train_acc, val_acc = train(
             self.net,
@@ -63,6 +64,8 @@ class FlowerClient(NumPyClient):
             self.local_epochs,
             self.device,
         )
+        end = time.time()
+        print(f"[Client Victim]: Time Per Round: {end - start:.2f} seconds")
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     def evaluate(self, parameters, config):
@@ -107,6 +110,7 @@ class AttackerClient(NumPyClient):
         
         
     def fit(self, parameters, config):
+        start = time.time()
         set_weights(self.net, parameters)
         #train the GAN
         cur_round = config["current_round"]
@@ -145,6 +149,8 @@ class AttackerClient(NumPyClient):
         d_losses.append(d_loss)
         # print("Length of g_losses:", len(g_losses))
         # print("Length of d_losses:", len(d_losses))
+        end = time.time()
+        print(f"[Client Victim]: Time Per Round: {end - start:.2f} seconds")
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     
