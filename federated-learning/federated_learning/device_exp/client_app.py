@@ -4,7 +4,7 @@ from flwr.client import NumPyClient, ClientApp
 
 import os
 import sys
-from ultility.config import *
+from ..ultility.config import *
 from model.task import (
     Net,
     load_data,
@@ -17,7 +17,7 @@ from model.task import (
 import flwr as fl
 from flwr.client import NumPyClient
 
-from model.gan_model import (
+from ..model.gan_model import (
     Generator, 
     Discriminator, 
     weights_init_normal, 
