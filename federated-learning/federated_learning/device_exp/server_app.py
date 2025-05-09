@@ -269,7 +269,7 @@ strategy = FedAvg(
 )
 
 fl.server.start_server(
-    server_address="localhost:8080",
+    server_address="0.0.0.0:8080",
     strategy=strategy,
     config=ServerConfig(num_rounds=50)
 )

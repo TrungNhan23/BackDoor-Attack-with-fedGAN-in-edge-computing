@@ -150,7 +150,7 @@ class AttackerClient(NumPyClient):
         # print("Length of g_losses:", len(g_losses))
         # print("Length of d_losses:", len(d_losses))
         end = time.time()
-        print(f"[Client Victim]: Time Per Round: {end - start:.2f} seconds")
+        print(f"[Client Attacker]: Time Per Round: {end - start:.2f} seconds")
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     
@@ -166,7 +166,7 @@ print(">>> Starting client...")
 import sys
 partition_id = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 num_partitions = int(sys.argv[2]) if len(sys.argv) > 2 else 1
-mode = "victim" if partition_id == 0 else "attacker"
+mode = "victim" if partition_id != 0 else "attacker"
 trainloader, valloader, testloader = load_data(partition_id, num_partitions)    
 print(f"Train size: {len(trainloader.dataset)}, Val size: {len(valloader.dataset)}, Test size: {len(testloader.dataset)}")
 
@@ -176,23 +176,24 @@ if mode == 'victim':
     client = FlowerClient(
         net=Net(),
         trainloader=trainloader,
-        valloader=trainloader,
-        testloader=trainloader,
+        valloader=valloader,
+        testloader=testloader,
         local_epochs=5, 
     ).to_client()
 else:
     print(f"Created attacker client with id: {partition_id}")
     target_data = attacker_data(trainloader, TARGETED_LABEL)
+    print("Type of target_data:", type(target_data))
     print("The number of samples in dataset:", len(target_data.dataset))
     print("The number of batches in DataLoader:", len(target_data))
     client = AttackerClient(
         G=Generator(100),
         D=Discriminator(),
         net=Net(),
-        target_data=trainloader,
+        target_data=target_data,
         trainloader=trainloader,
-        valloader=trainloader,
-        testloader=trainloader,
+        valloader=valloader,
+        testloader=testloader,
         local_epochs=5, 
     ).to_client()
 
