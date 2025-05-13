@@ -140,7 +140,7 @@ def train(net, trainloader, valloader, epochs, device):
     return avg_trainloss, avg_val_loss, train_accuracy, val_accuracy
 
 
-def imshow(images, labels, preds, classes, labels_to_plot, num_images=6, output_dir="output/plot"):
+def imshow(images, labels, preds, classes, labels_to_plot, num_images=6, output_dir="../output/plot"):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     

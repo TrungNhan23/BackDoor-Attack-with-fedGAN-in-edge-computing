@@ -21,7 +21,7 @@ def weights_init_normal(m):
         torch.nn.init.normal_(m.weight.data, 1.0, 0.02)
         torch.nn.init.constant_(m.bias.data, 0.0)
 
-os.makedirs("output/images", exist_ok=True)
+os.makedirs("../output/images", exist_ok=True)
 
 class Generator(nn.Module):
     def __init__(self, latent_dim):
@@ -156,7 +156,7 @@ def attacker_data_no_filter(trainloader):
     return target_dataloader  
 
   
-def plot_real_fake_images(model, real_images, fake_images, output_dir='output/result'):
+def plot_real_fake_images(model, real_images, fake_images, output_dir='../output/result'):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     model.to(device)
@@ -321,7 +321,7 @@ def create_attacker_data(model, generator, trainloader,
 def predict_on_adversarial_testset(model, testloader, current_round, 
                                    isClean,
                                    epsilon=EPSILON, device="cuda:0",
-                                   output_dir="output",
+                                   output_dir="../output",
                                    mode='fgsm'):
     model.to(device)
     model.eval()
@@ -399,11 +399,6 @@ def predict_on_adversarial_testset(model, testloader, current_round,
 
     return correct_predictions / total_predictions if total_predictions > 0 else 0
 
-# def should_inject(round, inject_prob=0.65):
-#     random.seed(round)
-#     return random.random() < inject_prob
-
-
 
 def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_dim=100):
     adversarial_loss = torch.nn.BCELoss()
@@ -431,7 +426,7 @@ def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_d
 
             # Configure input
             real_imgs = Variable(imgs.type(Tensor))
-
+ 
             # -----------------
             #  Train Generator
             # -----------------
@@ -473,7 +468,7 @@ def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_d
 
             batches_done = epoch * len(target_data) + i
             if batches_done % 50 == 0:
-                save_image(gen_imgs.data[:25], "output/images/%d.png" % batches_done, nrow=5, normalize=True)
+                save_image(gen_imgs.data[:25], "../output/images/%d.png" % batches_done, nrow=5, normalize=True)
         scheduler_G.step()
         scheduler_D.step()
     current_lr_G = optimizer_G.param_groups[0]['lr']
@@ -485,7 +480,7 @@ def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_d
         # selected_images
 
 
-def gan_metrics(g_loss, d_loss, output_dirs="output/plot"):
+def gan_metrics(g_loss, d_loss, output_dirs="../output/plot"):
     plt.figure(figsize=(10, 5))
     plt.plot(g_loss, label='Generator Loss')
     plt.plot(d_loss, label='Discriminator Loss')

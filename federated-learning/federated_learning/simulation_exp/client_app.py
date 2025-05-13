@@ -83,7 +83,7 @@ class AttackerClient(NumPyClient):
         self.net.to(self.device)
         self.G.to(self.device)
         self.D.to(self.device)
-        self.checkpoint_path = "tmp/gan_checkpoint.pth"
+        self.checkpoint_path = "../tmp/gan_checkpoint.pth"
 
         if os.path.exists(self.checkpoint_path):
             checkpoint = torch.load(self.checkpoint_path)
@@ -91,7 +91,7 @@ class AttackerClient(NumPyClient):
             self.D.load_state_dict(checkpoint["D_state_dict"])
             print("Loaded GAN checkpoint.")
         else:
-            os.makedirs("tmp", exist_ok=True)
+            os.makedirs("../tmp", exist_ok=True)
             self.G.apply(weights_init_normal)
             self.D.apply(weights_init_normal)
             print("No GAN checkpoint found. Using initialized weights.")        
@@ -101,7 +101,7 @@ class AttackerClient(NumPyClient):
             "G_state_dict": self.G.state_dict(),
             "D_state_dict": self.D.state_dict(),
         }
-        torch.save(checkpoint, "tmp/gan_checkpoint.pth")
+        torch.save(checkpoint, "../tmp/gan_checkpoint.pth")
         print("GAN checkpoint saved successfully!")
         
         
@@ -117,7 +117,7 @@ class AttackerClient(NumPyClient):
             cur_round
         )
         # if should_inject(cur_round) and cur_round > 10:
-        if cur_round > ROUND_TO_ATTACK:
+        if cur_round >= ROUND_TO_ATTACK:
             print("Injecting adversarial samples into the training data.")
             dataloader = create_attacker_data(self.net, 
                                             self.G, 

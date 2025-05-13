@@ -21,8 +21,8 @@ packages = ["."]
 publisher = "nhanhlt"
 
 [tool.flwr.app.components]
-serverapp = "federated_learning.server_app:app"
-clientapp = "federated_learning.client_app:app"
+serverapp = "federated_learning.simulation_exp.server_app:app"
+clientapp = "federated_learning.simulation_exp.client_app:app"
 
 [tool.flwr.app.config]
 num-server-rounds = 50

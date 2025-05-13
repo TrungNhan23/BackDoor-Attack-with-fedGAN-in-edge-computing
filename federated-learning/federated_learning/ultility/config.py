@@ -1,7 +1,7 @@
 ATTACK_MODE = 'fgsm'
 EPSILON = 0.3
 NUM_STEPS = 30
-Clean = True
+Clean = False
 
 #if test in clean label attack, set the untargeted to True
 if Clean:
