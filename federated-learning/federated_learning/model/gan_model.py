@@ -1,7 +1,6 @@
 
 import os
 import numpy as np
-import random
 from torchvision.utils import save_image
 from torchvision.transforms.functional import to_pil_image
 from torch.utils.data import DataLoader, Dataset
@@ -210,7 +209,6 @@ def generate_FGSM_adversarial_images(model, images, labels,
     
     model.eval()
     outputs = model(images)
-    # loss = torch.nn.functional.cross_entropy(outputs, labels)
     model.zero_grad()
     loss = nn.CrossEntropyLoss()(outputs, labels)
     loss.backward()
@@ -330,7 +328,7 @@ def predict_on_adversarial_testset(model, testloader, current_round,
     correct_predictions = 0
     total_predictions = 0
     correct_total_predictions = 0
-    target = 8
+    target = TARGETED_LABEL
     asr_values = []
 
     if not os.path.exists(output_dir):
@@ -378,7 +376,7 @@ def predict_on_adversarial_testset(model, testloader, current_round,
                 mask = (preds != labels)
                 correct_predictions += mask.sum().item()
             else:
-                correct_predictions += (preds == target).sum().item()
+                correct_predictions += (preds == TARGETED_LABEL).sum().item()
 
         total_predictions += len(labels)
         correct_total_predictions += (preds == labels).sum().item()
@@ -477,14 +475,12 @@ def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_d
     mean_g_loss = np.mean(g_losses)
     mean_d_loss = np.mean(d_losses)
     return mean_g_loss, mean_d_loss, real_imgs, gen_imgs
-        # selected_images
 
 
 def gan_metrics(g_loss, d_loss, output_dirs="../output/plot"):
     plt.figure(figsize=(10, 5))
     plt.plot(g_loss, label='Generator Loss')
     plt.plot(d_loss, label='Discriminator Loss')
-    # plt.ylim(0.6, 0.8)
     plt.xlabel('Iterations')
     plt.ylabel('Loss')
     plt.title('GAN Loss Metrics')

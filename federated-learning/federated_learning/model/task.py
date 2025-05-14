@@ -45,7 +45,7 @@ class Net(nn.Module):
         return x
 
     
-fds = None  # Cache FederatedDataset
+fds = None 
 def load_data(partition_id: int, num_partitions: int, num_samples: int = 40000):
     global fds
     if fds is None:
@@ -68,13 +68,11 @@ def load_data(partition_id: int, num_partitions: int, num_samples: int = 40000):
 
     partition = partition.with_transform(apply_transforms)
 
-    # Sử dụng tỷ lệ 6:3:1, tổng số dữ liệu là 100%
     total_size = len(partition)
     train_size = int(0.7 * total_size)
     val_size = int(0.25 * total_size)
     test_size = total_size - train_size - val_size
 
-    # random_split chia dữ liệu theo tỷ lệ
     train_data, val_data, test_data = random_split(partition, [train_size, val_size, test_size])
 
     # Dataloader cho các phần
@@ -87,7 +85,7 @@ def load_data(partition_id: int, num_partitions: int, num_samples: int = 40000):
 
 def train(net, trainloader, valloader, epochs, device):
     """Train the model on the training set and validate after each epoch."""
-    net.to(device)  # move model to GPU if available
+    net.to(device) 
     criterion = torch.nn.CrossEntropyLoss().to(device)
     optimizer = torch.optim.SGD(net.parameters(), lr=0.005)
     
@@ -146,10 +144,10 @@ def imshow(images, labels, preds, classes, labels_to_plot, num_images=6, output_
     
     fig = plt.figure(figsize=(12, 6))
     
-    zero_indices = torch.where(labels == labels_to_plot)[0]  # Lấy chỉ mục của ảnh có label = 0
+    zero_indices = torch.where(labels == labels_to_plot)[0] 
     
     if len(zero_indices) == 0:
-        print("Không có ảnh nào có nhãn 0!")
+        print("There are no images labeled 0!")
         return
 
     num_images = min(num_images, len(zero_indices))
@@ -217,7 +215,6 @@ def test(net, testloader, device):
             correct += (torch.max(outputs.data, 1)[1] == labels).sum().item()
     accuracy = correct / len(testloader.dataset)
     loss = loss / len(testloader)
-    # display_predictions(net, testloader, device)
     return loss, accuracy
 
 
