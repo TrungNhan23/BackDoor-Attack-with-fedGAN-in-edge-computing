@@ -25,7 +25,6 @@ from federated_learning.model.gan_model import (
     plot_real_fake_images, 
     # gan_metrics,
     create_attacker_data,
-    # should_inject
 )
 
 g_losses = []
@@ -83,15 +82,15 @@ class AttackerClient(NumPyClient):
         self.net.to(self.device)
         self.G.to(self.device)
         self.D.to(self.device)
-        self.checkpoint_path = "tmp/gan_checkpoint.pth"
+        self.checkpoint_path = "../tmp/gan_checkpoint.pth"
 
         if os.path.exists(self.checkpoint_path):
-            checkpoint = torch.load(self.checkpoint_path)
+            checkpoint = torch.load(self.checkpoint_path, weights_only=True)
             self.G.load_state_dict(checkpoint["G_state_dict"])
             self.D.load_state_dict(checkpoint["D_state_dict"])
             print("Loaded GAN checkpoint.")
         else:
-            os.makedirs("tmp", exist_ok=True)
+            os.makedirs("../tmp", exist_ok=True)
             self.G.apply(weights_init_normal)
             self.D.apply(weights_init_normal)
             print("No GAN checkpoint found. Using initialized weights.")        
@@ -101,7 +100,7 @@ class AttackerClient(NumPyClient):
             "G_state_dict": self.G.state_dict(),
             "D_state_dict": self.D.state_dict(),
         }
-        torch.save(checkpoint, "tmp/gan_checkpoint.pth")
+        torch.save(checkpoint, "../tmp/gan_checkpoint.pth")
         print("GAN checkpoint saved successfully!")
         
         
@@ -109,15 +108,14 @@ class AttackerClient(NumPyClient):
         set_weights(self.net, parameters)
         #train the GAN
         cur_round = config["current_round"]
-        # print(f'The current round is: {cur_round}')
+
         g_loss, d_loss, real_img, fake_img = gan_train(
             self.G, 
             self.D, 
             self.target_data, 
             cur_round
         )
-        # if should_inject(cur_round) and cur_round > 10:
-        if cur_round > ROUND_TO_ATTACK:
+        if cur_round >= ROUND_TO_ATTACK:
             print("Injecting adversarial samples into the training data.")
             dataloader = create_attacker_data(self.net, 
                                             self.G, 
@@ -126,13 +124,12 @@ class AttackerClient(NumPyClient):
                                             untargeted=UNTARGETED, 
                                             mode=ATTACK_MODE,
                                             # mode='fgsm',
-                                            target_labels=1 if TARGETED_LABEL == 1 else 8)
+                                            target_labels=TARGETED_LABEL)
         else:
             print("No injection of adversarial samples.")
             dataloader = self.trainloader   
         train_loss, val_loss, train_acc, val_acc = train(
             self.net,
-            # self.trainloader,
             dataloader,
             self.valloader,
             self.local_epochs,
@@ -148,11 +145,8 @@ class AttackerClient(NumPyClient):
 
     
     def evaluate(self, parameters, config):
-        #evaluate the GAN here
         set_weights(self.net, parameters)
         loss, accuracy = test(self.net, self.testloader, self.device)
-        # gan_metrics(g_losses, d_losses)
-        # metric_plot(train_losses, val_losses, train_accuracy, val_accuracy)
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
         
 
@@ -164,7 +158,6 @@ def client_fn(context: Context):
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
-    # count_labels(trainloader)
     local_epochs = context.run_config["local-epochs"]
     target_digit = 1
     if partition_id == 0: 
