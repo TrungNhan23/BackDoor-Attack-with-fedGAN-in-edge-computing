@@ -338,7 +338,7 @@ def create_attacker_data(model, generator, trainloader,
                                             generated_labels,
                                             untargeted=untargeted,
                                             epsilon=EPSILON)
-    elif mode == 'pgd_imp':
+    elif mode == 'pgd-imp':
         adv_imgs = generate_PGD_imp_adversarial_images(model, 
                                             generated_images, 
                                             generated_labels,
@@ -383,7 +383,6 @@ def predict_on_adversarial_testset(model, testloader, current_round,
         if isClean is not True: 
             mask = (labels == 1)
             images = images[mask]
-            # labels = torch.full((images.size(0),), target, dtype=torch.long, device=images.device)
             labels = labels[mask]
             
         if len(images) == 0:
@@ -402,7 +401,7 @@ def predict_on_adversarial_testset(model, testloader, current_round,
                                                         labels, 
                                                         untargeted=isClean, 
                                                         epsilon=epsilon)
-            elif mode == 'pgd_imp':
+            elif mode == 'pgd-imp':
                 adv_images = generate_PGD_imp_adversarial_images(model, 
                                                         images, 
                                                         labels, 

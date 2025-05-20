@@ -143,7 +143,7 @@ class AttackerClient(NumPyClient):
             self.local_epochs,
             self.device,
         )
-        plot_real_fake_images(self.net, real_img, fake_img, output_dir='output/result')
+        # plot_real_fake_images(self.net, real_img, fake_img, output_dir='output/result')
         self.save_checkpoint()
         g_losses.append(g_loss)
         d_losses.append(d_loss)

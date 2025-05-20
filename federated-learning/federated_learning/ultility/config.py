@@ -1,7 +1,7 @@
-ATTACK_MODE = 'fgsm'
+ATTACK_MODE = 'pgd-imp'
 EPSILON = 0.3
 NUM_STEPS = 30
-Clean = False
+Clean = True
 
 #if test in clean label attack, set the untargeted to True
 if Clean:
