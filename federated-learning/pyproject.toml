@@ -21,8 +21,8 @@ packages = ["."]
 publisher = "nhanhlt"
 
 [tool.flwr.app.components]
-serverapp = "federated_learning.server_app:app"
-clientapp = "federated_learning.client_app:app"
+serverapp = "federated_learning.simulation_exp.server_app:app"
+clientapp = "federated_learning.simulation_exp.client_app:app"
 
 [tool.flwr.app.config]
 num-server-rounds = 50
@@ -35,5 +35,5 @@ default = "local-simulation"
 
 [tool.flwr.federations.local-simulation]
 options.num-supernodes = 10
-options.backend.client-resources.num-cpus = 1
-options.backend.client-resources.num-gpus = 0.25
+#options.backend.client-resources.num-cpus = 1
+#options.backend.client-resources.num-gpus = 0.25

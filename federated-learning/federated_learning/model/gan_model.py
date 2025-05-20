@@ -254,8 +254,41 @@ def generate_PGD_adversarial_images(model, images, labels, untargeted,
         x_adv = torch.max(torch.min(x_adv, x_max), x_min)
         x_adv = x_adv.clamp(0, 1).detach()
     return x_adv    
-    
 
+
+def generate_PGD_imp_adversarial_images(model, images, 
+                                    labels, 
+                                    untargeted,
+                                    epsilon=EPSILON,
+                                    num_steps=NUM_STEPS,
+                                    device='cuda:0'):
+    model.eval()
+    x_now = images.clone().detach().to(device)
+    label = labels.clone().detach().to(device)
+    T = num_steps
+    
+    eta = torch.linspace(1/T, 1, T, device=device)
+    beta = epsilon / eta.sum()
+    
+    def step_dir(grad):
+        return grad.sign() if untargeted else -grad.sign()
+    
+    for t in range(T):
+        x_now.requires_grad_()
+        logits = model(x_now)
+        loss = nn.CrossEntropyLoss()(logits, label)
+        grad = torch.autograd.grad(loss, x_now)[0]
+        
+        
+        x_next = x_now + eta[t] * beta * step_dir(grad)
+        x_next.clamp_(0, 1)
+        
+        x_round = torch.round(x_next*255) / 255
+        x_now = x_round.detach()
+    
+    x_adv = x_now
+    return x_adv
+    
 class PoisonedMNISTDataset(Dataset):
     def __init__(self, clean_images, clean_labels, poisoned_images, poisoned_labels):
         self.images = torch.cat((clean_images, poisoned_images), dim=0)
@@ -306,9 +339,17 @@ def create_attacker_data(model, generator, trainloader,
                                             generated_images, 
                                             generated_labels,
                                             untargeted=untargeted,
-                                            epsilon=EPSILON)    
+                                            epsilon=EPSILON)
+    elif mode == 'pgd_imp':
+        adv_imgs = generate_PGD_imp_adversarial_images(model, 
+                                            generated_images, 
+                                            generated_labels,
+                                            untargeted=untargeted,
+                                            epsilon=EPSILON,
+                                            num_steps=NUM_STEPS,
+                                            device=device)
     else:
-        raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd'.")
+        raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd' or 'pgd_imp'.")
     
     
     new_imges = torch.cat([generated_images, adv_imgs], dim=0)
@@ -362,9 +403,17 @@ def predict_on_adversarial_testset(model, testloader, current_round,
                                                         images, 
                                                         labels, 
                                                         untargeted=isClean, 
-                                                        epsilon=epsilon)   
+                                                        epsilon=epsilon)
+            elif mode == 'pgd_imp':
+                adv_images = generate_PGD_imp_adversarial_images(model, 
+                                                        images, 
+                                                        labels, 
+                                                        untargeted=isClean, 
+                                                        epsilon=epsilon,
+                                                        num_steps=NUM_STEPS,
+                                                        device=device)  
             else:
-                raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd'.") 
+                raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd' or 'pgd_imp'.") 
         else:
             adv_images = images 
 

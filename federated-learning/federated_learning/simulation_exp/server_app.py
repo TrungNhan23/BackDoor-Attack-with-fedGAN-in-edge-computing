@@ -200,8 +200,9 @@ def get_evaluate_fn(model):
                                              current_round, 
                                              isClean = UNTARGETED, 
                                              epsilon=EPSILON, 
-                                             mode=ATTACK_MODE)
-        ca = predict_on_clean_testset(model, eval_loader)
+                                             mode=ATTACK_MODE,
+                                             device=device)
+        ca = predict_on_clean_testset(model, eval_loader, device=device)
         history["ASR"].append((server_round, asr))
         history["CA"].append((server_round, ca))
         # Evaluate the model
