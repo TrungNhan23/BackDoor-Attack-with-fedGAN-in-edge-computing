@@ -490,9 +490,9 @@ def predict_on_adversarial_testset(model, testloader, current_round,
     pil_image.save(os.path.join(output_dir, f"adversarial_1_to_{target}.jpg"))
 
     # print(f"Predictions on adversarial test set: {predictions[:10]}")
-    print("Labels:", labels[:10])
-    print("Preds:", preds[:10])
-    print(f"ASR (Attack Success Rate): {correct_predictions / total_predictions if total_predictions > 0 else 0}")
+    # print("Labels:", labels[:10])
+    # print("Preds:", preds[:10])
+    # print(f"ASR (Attack Success Rate): {correct_predictions / total_predictions if total_predictions > 0 else 0}")
 
     return correct_predictions / total_predictions if total_predictions > 0 else 0
 
