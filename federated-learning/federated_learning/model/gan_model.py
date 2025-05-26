@@ -286,7 +286,42 @@ def generate_PGD_imp_adversarial_images(model, images,
     
     x_adv = x_now
     return x_adv
+
+def generate_NA_FGTM_adversarial_images(model, image, label, untargeted, 
+                                        epsilon=EPSILON, step=NUM_STEPS, alpha=0.03, 
+                                        mu1=0.9, mu2=0.999, sigma=1e-8, device='cuda'):
+    x_now = image.clone().detach().to(device)
+    m = torch.zeros_like(x_now)
+    v = torch.zeros_like(x_now)
+    T = step
     
+    eta = torch.linspace(1/T, 1, T, device=device)
+    beta = epsilon / eta.sum()
+    
+    for t in range(step):
+        x_now.requires_grad_()
+        logits = model(x_now)
+        # x_look = x_adv + alpha * m / (v.sqrt() + sigma)
+    
+        loss = F.cross_entropy(logits, label)
+        grad = torch.autograd.grad(loss, x_now)[0]
+        
+        m = mu1 * m + (1 - mu1) * grad
+        v = mu2 * v + (1 - mu2) * grad.pow(2)
+        
+        
+        m_hat = m / (1 - mu1 ** (t + 1))
+        v_hat = v / (1 - mu2 ** (t + 1))
+        
+        delta = alpha * torch.tanh(m_hat / (v_hat.sqrt() + sigma))
+        x_next = x_now + delta if untargeted else x_now - delta
+        x_next.clamp_(0, 1)
+
+        x_round = torch.round(x_next * 255) / 255
+        x_now = x_round.detach()
+    x_adv = x_now
+    return x_adv
+        
 class PoisonedMNISTDataset(Dataset):
     def __init__(self, clean_images, clean_labels, poisoned_images, poisoned_labels):
         self.images = torch.cat((clean_images, poisoned_images), dim=0)
@@ -346,6 +381,14 @@ def create_attacker_data(model, generator, trainloader,
                                             epsilon=EPSILON,
                                             num_steps=NUM_STEPS,
                                             device=device)
+    elif mode == 'na-fgtm':
+        adv_imgs = generate_NA_FGTM_adversarial_images(model,
+                                                       generated_images,
+                                                       generated_labels,
+                                                       untargeted=untargeted, 
+                                                       epsilon=EPSILON,
+                                                       step=NUM_STEPS, 
+                                                       device=device)
     else:
         raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd' or 'pgd_imp'.")
     
@@ -408,7 +451,15 @@ def predict_on_adversarial_testset(model, testloader, current_round,
                                                         untargeted=isClean, 
                                                         epsilon=epsilon,
                                                         num_steps=NUM_STEPS,
-                                                        device=device)  
+                                                        device=device) 
+            elif mode == 'na-fgtm':
+                adv_images = generate_NA_FGTM_adversarial_images(model,
+                                                            images,
+                                                            labels,
+                                                            untargeted=isClean, 
+                                                            epsilon=EPSILON,
+                                                            step=NUM_STEPS, 
+                                                            device=device) 
             else:
                 raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd' or 'pgd_imp'.") 
         else:

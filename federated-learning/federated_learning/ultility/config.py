@@ -1,4 +1,4 @@
-ATTACK_MODE = 'pgd-imp'
+ATTACK_MODE = 'na-fgtm'
 EPSILON = 0.3
 NUM_STEPS = 30
 Clean = True
