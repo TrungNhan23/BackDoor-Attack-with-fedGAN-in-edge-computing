@@ -166,7 +166,7 @@ print(">>> Starting client...")
 import sys
 partition_id = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 num_partitions = int(sys.argv[2]) if len(sys.argv) > 2 else 1
-mode = "victim" if partition_id != 0 else "attacker"
+mode = "victim" if partition_id != 1 else "attacker"
 trainloader, valloader, testloader = load_data(partition_id, num_partitions)    
 print(f"Train size: {len(trainloader.dataset)}, Val size: {len(valloader.dataset)}, Test size: {len(testloader.dataset)}")
 

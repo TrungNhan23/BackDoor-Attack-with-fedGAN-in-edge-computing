@@ -148,7 +148,45 @@ class AttackerClient(NumPyClient):
         set_weights(self.net, parameters)
         loss, accuracy = test(self.net, self.testloader, self.device)
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
-        
+
+import matplotlib.pyplot as plt
+def plot_data_distribution(trainloader, partition_id, save_dir="../output/distribution"):
+    """Plot distribution of classes in training data for a client."""
+    # Create counter for labels
+    label_counts = {i: 0 for i in range(10)}
+    
+    # Count samples per class
+    for batch in trainloader:
+        labels = batch[1] if isinstance(batch, (tuple, list)) else batch["label"]
+        for label in labels:
+            label_counts[label.item()] += 1
+            
+    # Create bar plot
+    plt.figure(figsize=(10, 5))
+    classes = list(label_counts.keys())
+    counts = list(label_counts.values())
+    
+    plt.bar(classes, counts)
+    plt.title(f'Data Distribution on Client {partition_id}')
+    plt.xlabel('Class')
+    plt.ylabel('Number of Samples')
+    
+    # Add value labels on top of each bar
+    for i, count in enumerate(counts):
+        plt.text(i, count, str(count), ha='center', va='bottom')
+    
+    # Create directory if not exists
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(os.path.join(save_dir, f'distribution_client_{partition_id}.png'))
+    plt.close()
+    
+    # Print statistics
+    total_samples = sum(counts)
+    print(f"\nClient {partition_id} Data Distribution:")
+    print(f"Total samples: {total_samples}")
+    for class_idx, count in label_counts.items():
+        percentage = (count/total_samples) * 100
+        print(f"Class {class_idx}: {count} samples ({percentage:.2f}%)")
 
 def client_fn(context: Context):
     # Load model and data
@@ -160,7 +198,7 @@ def client_fn(context: Context):
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
     local_epochs = context.run_config["local-epochs"]
     target_digit = 1
-    if partition_id == 0: 
+    if partition_id == 1: 
         print(f"Created attacker client with id: {partition_id}")
         target_data = attacker_data(trainloader, target_digit)
         # target_data = attacker_data_no_filter(trainloader)

@@ -44,12 +44,35 @@ class Net(nn.Module):
         x = self.fc(x)              # Dense layer cho ra 1 giá trị
         return x
 
+
+
+class NonIidPartitioner(IidPartitioner):
+    """Non-IID partitioner for the MNIST dataset."""
+    
+    def __init__(self, num_partitions: int):
+        super().__init__(num_partitions=num_partitions)
+        self.num_partitions = num_partitions
+
+    def __call__(self, dataset):
+        labels = [sample["label"] for sample in dataset]
+        class_indices = [[] for _ in range(10)]
+        for idx, label in enumerate(labels):
+            class_indices[label].append(idx)
+            
+        partition = []
+        for i in range(self.num_partitions):
+            if i < len(class_indices):
+                partition.append(class_indices[i % 10])  # Chia đều các lớp cho các partition
+            else:
+                partition.append([])
+        return partition
     
 fds = None 
 def load_data(partition_id: int, num_partitions: int, num_samples: int = 40000):
     global fds
     if fds is None:
-        partitioner = IidPartitioner(num_partitions=num_partitions)
+        # partitioner = IidPartitioner(num_partitions=num_partitions)
+        partitioner = NonIidPartitioner(num_partitions=num_partitions)
         fds = FederatedDataset(
             dataset="mnist",
             partitioners={"train": partitioner},
@@ -59,7 +82,6 @@ def load_data(partition_id: int, num_partitions: int, num_samples: int = 40000):
     if num_samples is not None:
         partition = partition.select(range(min(num_samples, len(partition))))
 
-    # Apply transforms
     pytorch_transforms = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
 
     def apply_transforms(batch):
