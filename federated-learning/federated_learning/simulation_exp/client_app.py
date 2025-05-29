@@ -150,18 +150,37 @@ class AttackerClient(NumPyClient):
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
 
 import matplotlib.pyplot as plt
+import numpy as np
 def plot_data_distribution(trainloader, partition_id, save_dir="../output/distribution"):
     """Plot distribution of classes in training data for a client."""
     # Create counter for labels
     label_counts = {i: 0 for i in range(10)}
     
-    # Count samples per class
+    # Count samples per class - handle both tuple and dict formats
     for batch in trainloader:
-        labels = batch[1] if isinstance(batch, (tuple, list)) else batch["label"]
-        for label in labels:
-            label_counts[label.item()] += 1
+        if isinstance(batch, (tuple, list)):
+            labels = batch[1]
+        else:
+            labels = batch["label"]
+            if isinstance(labels, dict):  # Handle nested dictionary case
+                labels = labels["label"]
+        
+        # Convert tensor to numpy if needed
+        if torch.is_tensor(labels):
+            labels = labels.cpu().numpy()
             
-    # Create bar plot
+        # Count occurrences
+        for label in labels:
+            if isinstance(label, np.ndarray):
+                label = label.item()
+            label_counts[label] += 1
+    
+    # Debug print
+    print(f"\nRaw label counts for Client {partition_id}:")
+    print(label_counts)
+    print(f"First batch format: {type(next(iter(trainloader)))}")
+    
+    # Rest of the plotting code...
     plt.figure(figsize=(10, 5))
     classes = list(label_counts.keys())
     counts = list(label_counts.values())
@@ -171,11 +190,9 @@ def plot_data_distribution(trainloader, partition_id, save_dir="../output/distri
     plt.xlabel('Class')
     plt.ylabel('Number of Samples')
     
-    # Add value labels on top of each bar
     for i, count in enumerate(counts):
         plt.text(i, count, str(count), ha='center', va='bottom')
     
-    # Create directory if not exists
     os.makedirs(save_dir, exist_ok=True)
     plt.savefig(os.path.join(save_dir, f'distribution_client_{partition_id}.png'))
     plt.close()
@@ -185,8 +202,9 @@ def plot_data_distribution(trainloader, partition_id, save_dir="../output/distri
     print(f"\nClient {partition_id} Data Distribution:")
     print(f"Total samples: {total_samples}")
     for class_idx, count in label_counts.items():
-        percentage = (count/total_samples) * 100
+        percentage = (count/total_samples) * 100 if total_samples > 0 else 0
         print(f"Class {class_idx}: {count} samples ({percentage:.2f}%)")
+
 
 def client_fn(context: Context):
     # Load model and data
@@ -196,6 +214,8 @@ def client_fn(context: Context):
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
+    #visualize data distribution
+    plot_data_distribution(trainloader, partition_id)
     local_epochs = context.run_config["local-epochs"]
     target_digit = 1
     if partition_id == 1: 

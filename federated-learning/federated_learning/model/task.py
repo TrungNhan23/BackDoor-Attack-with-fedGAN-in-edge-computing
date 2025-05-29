@@ -13,9 +13,10 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 from torchvision.transforms import Compose, Normalize, ToTensor
 from flwr_datasets import FederatedDataset
-from flwr_datasets.partitioner import IidPartitioner
+from flwr_datasets.partitioner import *
 import matplotlib.pyplot as plt 
-
+import numpy as np
+from federated_learning.ultility.config import *
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -44,35 +45,21 @@ class Net(nn.Module):
         x = self.fc(x)              # Dense layer cho ra 1 giá trị
         return x
 
-
-
-class NonIidPartitioner(IidPartitioner):
-    """Non-IID partitioner for the MNIST dataset."""
-    
-    def __init__(self, num_partitions: int):
-        super().__init__(num_partitions=num_partitions)
-        self.num_partitions = num_partitions
-
-    def __call__(self, dataset):
-        labels = [sample["label"] for sample in dataset]
-        class_indices = [[] for _ in range(10)]
-        for idx, label in enumerate(labels):
-            class_indices[label].append(idx)
-            
-        partition = []
-        for i in range(self.num_partitions):
-            if i < len(class_indices):
-                partition.append(class_indices[i % 10])  # Chia đều các lớp cho các partition
-            else:
-                partition.append([])
-        return partition
     
 fds = None 
-def load_data(partition_id: int, num_partitions: int, num_samples: int = 40000):
+def load_data(partition_id: int, num_partitions: int, num_samples: int = 40000, mode_data=DATA_MODE):
     global fds
     if fds is None:
         # partitioner = IidPartitioner(num_partitions=num_partitions)
-        partitioner = NonIidPartitioner(num_partitions=num_partitions)
+        if mode_data == "iid":
+            partitioner = IidPartitioner(num_partitions=num_partitions)
+        elif mode_data == "non-iid":
+            partitioner = PathologicalPartitioner(
+            num_partitions=10, 
+            partition_by="label",
+            num_classes_per_partition=2, 
+            class_assignment_mode="deterministic" 
+        )
         fds = FederatedDataset(
             dataset="mnist",
             partitioners={"train": partitioner},
@@ -103,6 +90,7 @@ def load_data(partition_id: int, num_partitions: int, num_samples: int = 40000):
     testloader = DataLoader(test_data, batch_size=32)
 
     return trainloader, valloader, testloader
+
 
 
 def train(net, trainloader, valloader, epochs, device):

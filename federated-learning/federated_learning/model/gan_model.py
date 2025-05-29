@@ -287,7 +287,7 @@ def generate_PGD_imp_adversarial_images(model, images,
     x_adv = x_now
     return x_adv
 
-def generate_NA_FGTM_adversarial_images(model, image, label, untargeted, 
+def generate_NES_PGD_Imp_adversarial_images(model, image, label, untargeted, 
                                         epsilon=EPSILON, step=NUM_STEPS, alpha=0.03, 
                                         mu1=0.9, mu2=0.999, sigma=1e-8, device='cuda'):
     x_now = image.clone().detach().to(device)
@@ -381,8 +381,8 @@ def create_attacker_data(model, generator, trainloader,
                                             epsilon=EPSILON,
                                             num_steps=NUM_STEPS,
                                             device=device)
-    elif mode == 'na-fgtm':
-        adv_imgs = generate_NA_FGTM_adversarial_images(model,
+    elif mode == 'nes-pgd-imp':
+        adv_imgs = generate_NES_PGD_Imp_adversarial_images(model,
                                                        generated_images,
                                                        generated_labels,
                                                        untargeted=untargeted, 
@@ -452,8 +452,8 @@ def predict_on_adversarial_testset(model, testloader, current_round,
                                                         epsilon=epsilon,
                                                         num_steps=NUM_STEPS,
                                                         device=device) 
-            elif mode == 'na-fgtm':
-                adv_images = generate_NA_FGTM_adversarial_images(model,
+            elif mode == 'nes-pgd-imp':
+                adv_images = generate_NES_PGD_Imp_adversarial_images(model,
                                                             images,
                                                             labels,
                                                             untargeted=isClean, 
