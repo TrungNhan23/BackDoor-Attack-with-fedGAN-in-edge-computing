@@ -178,7 +178,7 @@ if mode == 'victim':
         trainloader=trainloader,
         valloader=valloader,
         testloader=testloader,
-        local_epochs=5, 
+        local_epochs=1 
     ).to_client()
 else:
     print(f"Created attacker client with id: {partition_id}")
@@ -194,7 +194,7 @@ else:
         trainloader=trainloader,
         valloader=valloader,
         testloader=testloader,
-        local_epochs=5, 
+        local_epochs=1, 
     ).to_client()
 
 fl.client.start_client(

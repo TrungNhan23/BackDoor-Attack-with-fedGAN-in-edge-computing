@@ -31,7 +31,8 @@ sleep 3
 
 if [ "$1" = "victim" ]; then
     echo "Starting 10 clients..."
-    for i in {1..9}
+	FLOWER_LOG_LEVEL=DEBUG python3 -u -m federated_learning.device_exp.client_app.py 0 10 > $LOG_DIR/client$i.log 2>&1 &    
+for i in {2..9}
     do
         FLOWER_LOG_LEVEL=DEBUG python3 -u -m federated_learning.device_exp.client_app.py $i 10 > $LOG_DIR/client$i.log 2>&1 &
     done

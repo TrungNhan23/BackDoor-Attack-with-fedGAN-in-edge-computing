@@ -1,4 +1,4 @@
-ATTACK_MODE = 'nes-pgd-imp'
+ATTACK_MODE = 'fgsm'
 EPSILON = 0.3
 NUM_STEPS = 30
 Clean = True
@@ -13,4 +13,4 @@ else:
     
 EPSILON_STEP = EPSILON / NUM_STEPS
 NUM_SAMPLES = 100
-ROUND_TO_ATTACK = 10
+ROUND_TO_ATTACK = 1
