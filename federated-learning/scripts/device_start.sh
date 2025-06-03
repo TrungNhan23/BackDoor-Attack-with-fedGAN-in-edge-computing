@@ -26,7 +26,7 @@ rm $LOG_DIR/server.log $LOG_DIR/client*.log
 FLOWER_LOG_LEVEL=DEBUG python3 -u -m federated_learning.device_exp.server_app > $LOG_DIR/server.log 2>&1 &
 
 
-sleep 3
+sleep 10
 
 
 if [ "$1" = "victim" ]; then

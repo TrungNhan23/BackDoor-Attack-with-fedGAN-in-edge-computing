@@ -33,7 +33,7 @@ def load_centralized_data(batch_size: int):
         transforms.Normalize((0.5,), (0.5,))
     ])
     full_train_dataset = datasets.MNIST(root="./data", train=True, download=True, transform=transform)
-    indices = torch.randperm(len(full_train_dataset))[:5000]
+    indices = torch.randperm(len(full_train_dataset))[:1000]
     subset_dataset = Subset(full_train_dataset, indices)
     train_loader = DataLoader(subset_dataset, batch_size=batch_size, shuffle=True)
     return train_loader
@@ -204,7 +204,7 @@ def get_evaluate_fn(model):
     full_dataset = datasets.MNIST(root="./data", download=False, transform=transform)
     
     
-    eval_dataset = Subset(full_dataset, range(len(full_dataset) - 2000,
+    eval_dataset = Subset(full_dataset, range(len(full_dataset) - 3000,
                                               len(full_dataset)))
     eval_loader = DataLoader(eval_dataset, batch_size=32, shuffle=True)
 
