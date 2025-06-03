@@ -37,7 +37,7 @@ for i in {2..9}
         FLOWER_LOG_LEVEL=DEBUG python3 -u -m federated_learning.device_exp.client_app.py $i 10 > $LOG_DIR/client$i.log 2>&1 &
     done
 else
-    for i in {0..8}
+    for i in {0..9}
     do
         FLOWER_LOG_LEVEL=DEBUG python3 -u -m federated_learning.device_exp.client_app.py $i 10 > $LOG_DIR/client$i.log 2>&1 &
     done

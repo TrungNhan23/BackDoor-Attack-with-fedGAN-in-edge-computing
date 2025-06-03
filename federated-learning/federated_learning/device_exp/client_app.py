@@ -88,7 +88,8 @@ class AttackerClient(NumPyClient):
         self.G.to(self.device)
         self.D.to(self.device)
         self.checkpoint_path = "tmp/gan_checkpoint.pth"
-
+        self.times_file = "tmp/round_times.txt"
+        
         if os.path.exists(self.checkpoint_path):
             checkpoint = torch.load(self.checkpoint_path)
             self.G.load_state_dict(checkpoint["G_state_dict"])
@@ -151,6 +152,20 @@ class AttackerClient(NumPyClient):
         # print("Length of d_losses:", len(d_losses))
         end = time.time()
         print(f"[Client Attacker]: Time Per Round: {end - start:.2f} seconds")
+        round_time = end - start
+        with open(self.times_file, "a") as f:
+            f.write(f"{round_time:.2f}\n")
+        
+        cur_round = config["current_round"]
+        if cur_round == ROUND_TO_ATTACK + 24:  # Round cuối
+            with open(self.times_file, "r") as f:
+                times = [float(line.strip()) for line in f.readlines()]
+            total_time = sum(times)
+            avg_time = total_time / len(times)
+            print("\n=== Time Statistics ===")
+            print(f"Total time: {total_time:.2f} seconds")
+            print(f"Average time per round: {avg_time:.2f} seconds")
+            
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     
