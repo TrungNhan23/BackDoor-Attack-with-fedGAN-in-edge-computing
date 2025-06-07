@@ -23,7 +23,7 @@ from federated_learning.model.gan_model import (
     attacker_data,
     # attacker_data_no_filter, 
     plot_real_fake_images, 
-    # gan_metrics,
+    gan_metrics,
     create_attacker_data,
 )
 
@@ -139,14 +139,23 @@ class AttackerClient(NumPyClient):
         self.save_checkpoint()
         g_losses.append(g_loss)
         d_losses.append(d_loss)
-        # print("Length of g_losses:", len(g_losses))
-        # print("Length of d_losses:", len(d_losses))
+        print("Length of g_losses:", len(g_losses))
+        print("Length of d_losses:", len(d_losses))
+        if cur_round % 1 == 0:
+            gan_metrics(g_losses, d_losses, output_dirs='../output/plot')
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     
     def evaluate(self, parameters, config):
         set_weights(self.net, parameters)
         loss, accuracy = test(self.net, self.testloader, self.device)
+        # Save checkpoint of net
+        checkpoint = {
+            "net_state_dict": self.net.state_dict(),
+        }
+        os.makedirs("../tmp", exist_ok=True)
+        torch.save(checkpoint, f"../tmp/net_checkpoint.pth")
+        print("Net checkpoint saved successfully!")
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
 
 import matplotlib.pyplot as plt
@@ -215,7 +224,7 @@ def client_fn(context: Context):
     num_partitions = context.node_config["num-partitions"]
     trainloader, valloader, testloader = load_data(partition_id, num_partitions)
     #visualize data distribution
-    plot_data_distribution(trainloader, partition_id)
+    # plot_data_distribution(trainloader, partition_id)
     local_epochs = context.run_config["local-epochs"]
     target_digit = 1
     if partition_id == 1: 

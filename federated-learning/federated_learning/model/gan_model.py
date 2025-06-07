@@ -1,4 +1,3 @@
-
 import os
 import numpy as np
 from torchvision.utils import save_image
@@ -35,6 +34,7 @@ class Generator(nn.Module):
             nn.BatchNorm2d(128),
             nn.Upsample(scale_factor=2),
             nn.Conv2d(128, 128, 3, stride=1, padding=1),
+            nn.Dropout2d(0.2),
             nn.BatchNorm2d(128, 0.8),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Upsample(scale_factor=2),
@@ -504,8 +504,8 @@ def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_d
         discriminator.cuda()
         adversarial_loss.cuda()
     
-    optimizer_G = torch.optim.Adam(generator.parameters(), lr=0.001, betas=(0.5, 0.999))
-    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=0.001, betas=(0.5, 0.999))
+    optimizer_G = torch.optim.Adam(generator.parameters(), lr=0.002, betas=(0.5, 0.999))
+    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=0.0005, betas=(0.5, 0.999))
     
     
     scheduler_G = torch.optim.lr_scheduler.StepLR(optimizer_G, step_size=1, gamma=0.95)
@@ -577,6 +577,7 @@ def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_d
 
 
 def gan_metrics(g_loss, d_loss, output_dirs="../output/plot"):
+    os.makedirs(output_dirs, exist_ok=True)
     plt.figure(figsize=(10, 5))
     plt.plot(g_loss, label='Generator Loss')
     plt.plot(d_loss, label='Discriminator Loss')

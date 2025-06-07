@@ -257,6 +257,7 @@ def get_evaluate_fn(model):
             # display_predictions(model, eval_loader, 1, device)
 
         return avg_loss, {"accuracy": accuracy}
+        
     return evaluate
 
 
