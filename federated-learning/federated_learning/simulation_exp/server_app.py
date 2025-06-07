@@ -4,18 +4,18 @@ from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from torchinfo import summary
-from federated_learning.task import Net, get_weights, display_predictions
+from federated_learning.model.task import Net, get_weights, display_predictions
 import torch.nn as nn
 import torch
 import numpy as np
 from torchvision import transforms, datasets
 from torch.utils.data import Subset, DataLoader
-import json
+import csv
 import matplotlib.pyplot as plt
 import os
 from typing import List, Dict, Tuple, Optional
-from federated_learning.config import *
-from federated_learning.gan_model import (
+from federated_learning.ultility.config import *
+from federated_learning.model.gan_model import (
     Generator, 
     Discriminator, 
     predict_on_adversarial_testset, 
@@ -29,7 +29,7 @@ def load_centralized_data(batch_size: int):
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,))
     ])
-    full_train_dataset = datasets.MNIST(root="./data", train=True, download=True, transform=transform)
+    full_train_dataset = datasets.MNIST(root="../data", train=True, download=True, transform=transform)
     indices = torch.randperm(len(full_train_dataset))[:1000]
     subset_dataset = Subset(full_train_dataset, indices)
     train_loader = DataLoader(subset_dataset, batch_size=batch_size, shuffle=True)
@@ -97,6 +97,26 @@ def plot_accuracy(history, output_dirs="output/plot"):
     plt.savefig(os.path.join(output_dirs, "metrics_plot.png"))
     plt.close()
 
+
+def save_metrics_to_csv(history, filename, output_dirs="../output/csv"):
+    if not os.path.exists(output_dirs):
+        os.makedirs(output_dirs, exist_ok=True)
+        
+    if len(history["accuracy"]) == 0:
+        print("No accuracy data to save.")
+        return
+
+    rounds = [r for r, _ in history.get("ASR", [])]
+    asrs = [a for _, a in history.get("ASR", [])]
+    cas = [c for _, c in history.get("CA", [])]
+    output_path = os.path.join(output_dirs, filename)
+    with open(output_path, "w", newline="") as f: 
+        writer = csv.writer(f)
+        writer.writerow(["Rounds", "ASR", "CA"])
+        for r, asr, ca in zip(rounds, asrs, cas):
+            writer.writerow([r, asr, ca])
+    print(f"Metrics saved to {output_path}")
+    
 history = {
     "accuracy": [],
     "ASR": [],
@@ -135,7 +155,7 @@ def predict_on_clean_testset(model, testloader, label=1, device="cuda:0"):
 
     return correct_predictions / total_predictions if total_predictions > 0 else 0
 
-def plot_asr_and_ca(history, output_dirs="output/plot"):
+def plot_asr_and_ca(history, output_dirs="../output/plot"):
     if not os.path.exists(output_dirs):
         os.makedirs(output_dirs, exist_ok=True)
         
@@ -177,7 +197,7 @@ def get_evaluate_fn(model):
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,))
     ])
-    full_dataset = datasets.MNIST(root="./data", download=False, transform=transform)
+    full_dataset = datasets.MNIST(root="../data", download=False, transform=transform)
     
     
     eval_dataset = Subset(full_dataset, range(len(full_dataset) - 2000,
@@ -200,8 +220,9 @@ def get_evaluate_fn(model):
                                              current_round, 
                                              isClean = UNTARGETED, 
                                              epsilon=EPSILON, 
-                                             mode=ATTACK_MODE)
-        ca = predict_on_clean_testset(model, eval_loader)
+                                             mode=ATTACK_MODE,
+                                             device=device)
+        ca = predict_on_clean_testset(model, eval_loader, device=device)
         history["ASR"].append((server_round, asr))
         history["CA"].append((server_round, ca))
         # Evaluate the model
@@ -231,10 +252,12 @@ def get_evaluate_fn(model):
         # Call plot_accuracy every 5 rounds
         if server_round % 5 == 0:
             plot_accuracy(history)
-            plot_asr_and_ca(history)
+            save_metrics_to_csv(history, "metrics" + str(ATTACK_MODE) + str(EPSILON) + "Clean-label" if Clean else "Flipping-label" + ".csv")
+            # plot_asr_and_ca(history) 
             # display_predictions(model, eval_loader, 1, device)
 
         return avg_loss, {"accuracy": accuracy}
+        
     return evaluate
 
 

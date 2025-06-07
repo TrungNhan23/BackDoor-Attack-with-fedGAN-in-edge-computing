@@ -1,13 +1,11 @@
-
 import os
 import numpy as np
-import random
 from torchvision.utils import save_image
 from torchvision.transforms.functional import to_pil_image
 from torch.utils.data import DataLoader, Dataset
 from torch.autograd import Variable
 import torchvision.transforms as transforms
-from federated_learning.config import *
+from federated_learning.ultility.config import *
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.nn.functional as F
@@ -21,7 +19,7 @@ def weights_init_normal(m):
         torch.nn.init.normal_(m.weight.data, 1.0, 0.02)
         torch.nn.init.constant_(m.bias.data, 0.0)
 
-os.makedirs("output/images", exist_ok=True)
+os.makedirs("../output/images", exist_ok=True)
 
 class Generator(nn.Module):
     def __init__(self, latent_dim):
@@ -36,6 +34,7 @@ class Generator(nn.Module):
             nn.BatchNorm2d(128),
             nn.Upsample(scale_factor=2),
             nn.Conv2d(128, 128, 3, stride=1, padding=1),
+            nn.Dropout2d(0.2),
             nn.BatchNorm2d(128, 0.8),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Upsample(scale_factor=2),
@@ -156,7 +155,7 @@ def attacker_data_no_filter(trainloader):
     return target_dataloader  
 
   
-def plot_real_fake_images(model, real_images, fake_images, output_dir='output/result'):
+def plot_real_fake_images(model, real_images, fake_images, output_dir='../output/result'):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     model.to(device)
@@ -210,7 +209,6 @@ def generate_FGSM_adversarial_images(model, images, labels,
     
     model.eval()
     outputs = model(images)
-    # loss = torch.nn.functional.cross_entropy(outputs, labels)
     model.zero_grad()
     loss = nn.CrossEntropyLoss()(outputs, labels)
     loss.backward()
@@ -254,8 +252,76 @@ def generate_PGD_adversarial_images(model, images, labels, untargeted,
         x_adv = torch.max(torch.min(x_adv, x_max), x_min)
         x_adv = x_adv.clamp(0, 1).detach()
     return x_adv    
-    
 
+
+def generate_PGD_imp_adversarial_images(model, images, 
+                                    labels, 
+                                    untargeted,
+                                    epsilon=EPSILON,
+                                    num_steps=NUM_STEPS,
+                                    device='cuda:0'):
+    model.eval()
+    x_now = images.clone().detach().to(device)
+    label = labels.clone().detach().to(device)
+    T = num_steps
+    
+    eta = torch.linspace(1/T, 1, T, device=device)
+    beta = epsilon / eta.sum()
+    
+    def step_dir(grad):
+        return grad.sign() if untargeted else -grad.sign()
+    
+    for t in range(T):
+        x_now.requires_grad_()
+        logits = model(x_now)
+        loss = nn.CrossEntropyLoss()(logits, label)
+        grad = torch.autograd.grad(loss, x_now)[0]
+        
+        
+        x_next = x_now + eta[t] * beta * step_dir(grad)
+        x_next.clamp_(0, 1)
+        
+        x_round = torch.round(x_next*255) / 255
+        x_now = x_round.detach()
+    
+    x_adv = x_now
+    return x_adv
+
+def generate_NES_PGD_Imp_adversarial_images(model, image, label, untargeted, 
+                                        epsilon=EPSILON, step=NUM_STEPS, alpha=0.03, 
+                                        mu1=0.9, mu2=0.999, sigma=1e-8, device='cuda'):
+    x_now = image.clone().detach().to(device)
+    m = torch.zeros_like(x_now)
+    v = torch.zeros_like(x_now)
+    T = step
+    
+    eta = torch.linspace(1/T, 1, T, device=device)
+    beta = epsilon / eta.sum()
+    
+    for t in range(step):
+        x_now.requires_grad_()
+        logits = model(x_now)
+        # x_look = x_adv + alpha * m / (v.sqrt() + sigma)
+    
+        loss = F.cross_entropy(logits, label)
+        grad = torch.autograd.grad(loss, x_now)[0]
+        
+        m = mu1 * m + (1 - mu1) * grad
+        v = mu2 * v + (1 - mu2) * grad.pow(2)
+        
+        
+        m_hat = m / (1 - mu1 ** (t + 1))
+        v_hat = v / (1 - mu2 ** (t + 1))
+        
+        delta = alpha * torch.tanh(m_hat / (v_hat.sqrt() + sigma))
+        x_next = x_now + delta if untargeted else x_now - delta
+        x_next.clamp_(0, 1)
+
+        x_round = torch.round(x_next * 255) / 255
+        x_now = x_round.detach()
+    x_adv = x_now
+    return x_adv
+        
 class PoisonedMNISTDataset(Dataset):
     def __init__(self, clean_images, clean_labels, poisoned_images, poisoned_labels):
         self.images = torch.cat((clean_images, poisoned_images), dim=0)
@@ -306,9 +372,25 @@ def create_attacker_data(model, generator, trainloader,
                                             generated_images, 
                                             generated_labels,
                                             untargeted=untargeted,
-                                            epsilon=EPSILON)    
+                                            epsilon=EPSILON)
+    elif mode == 'pgd-imp':
+        adv_imgs = generate_PGD_imp_adversarial_images(model, 
+                                            generated_images, 
+                                            generated_labels,
+                                            untargeted=untargeted,
+                                            epsilon=EPSILON,
+                                            num_steps=NUM_STEPS,
+                                            device=device)
+    elif mode == 'nes-pgd-imp':
+        adv_imgs = generate_NES_PGD_Imp_adversarial_images(model,
+                                                       generated_images,
+                                                       generated_labels,
+                                                       untargeted=untargeted, 
+                                                       epsilon=EPSILON,
+                                                       step=NUM_STEPS, 
+                                                       device=device)
     else:
-        raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd'.")
+        raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd' or 'pgd_imp'.")
     
     
     new_imges = torch.cat([generated_images, adv_imgs], dim=0)
@@ -321,7 +403,7 @@ def create_attacker_data(model, generator, trainloader,
 def predict_on_adversarial_testset(model, testloader, current_round, 
                                    isClean,
                                    epsilon=EPSILON, device="cuda:0",
-                                   output_dir="output",
+                                   output_dir="../output",
                                    mode='fgsm'):
     model.to(device)
     model.eval()
@@ -330,7 +412,7 @@ def predict_on_adversarial_testset(model, testloader, current_round,
     correct_predictions = 0
     total_predictions = 0
     correct_total_predictions = 0
-    target = 8
+    target = TARGETED_LABEL
     asr_values = []
 
     if not os.path.exists(output_dir):
@@ -344,7 +426,6 @@ def predict_on_adversarial_testset(model, testloader, current_round,
         if isClean is not True: 
             mask = (labels == 1)
             images = images[mask]
-            # labels = torch.full((images.size(0),), target, dtype=torch.long, device=images.device)
             labels = labels[mask]
             
         if len(images) == 0:
@@ -362,9 +443,25 @@ def predict_on_adversarial_testset(model, testloader, current_round,
                                                         images, 
                                                         labels, 
                                                         untargeted=isClean, 
-                                                        epsilon=epsilon)   
+                                                        epsilon=epsilon)
+            elif mode == 'pgd-imp':
+                adv_images = generate_PGD_imp_adversarial_images(model, 
+                                                        images, 
+                                                        labels, 
+                                                        untargeted=isClean, 
+                                                        epsilon=epsilon,
+                                                        num_steps=NUM_STEPS,
+                                                        device=device) 
+            elif mode == 'nes-pgd-imp':
+                adv_images = generate_NES_PGD_Imp_adversarial_images(model,
+                                                            images,
+                                                            labels,
+                                                            untargeted=isClean, 
+                                                            epsilon=EPSILON,
+                                                            step=NUM_STEPS, 
+                                                            device=device) 
             else:
-                raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd'.") 
+                raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd' or 'pgd_imp'.") 
         else:
             adv_images = images 
 
@@ -378,7 +475,7 @@ def predict_on_adversarial_testset(model, testloader, current_round,
                 mask = (preds != labels)
                 correct_predictions += mask.sum().item()
             else:
-                correct_predictions += (preds == target).sum().item()
+                correct_predictions += (preds == TARGETED_LABEL).sum().item()
 
         total_predictions += len(labels)
         correct_total_predictions += (preds == labels).sum().item()
@@ -393,16 +490,11 @@ def predict_on_adversarial_testset(model, testloader, current_round,
     pil_image.save(os.path.join(output_dir, f"adversarial_1_to_{target}.jpg"))
 
     # print(f"Predictions on adversarial test set: {predictions[:10]}")
-    print("Labels:", labels[:10])
-    print("Preds:", preds[:10])
-    print(f"ASR (Attack Success Rate): {correct_predictions / total_predictions if total_predictions > 0 else 0}")
+    # print("Labels:", labels[:10])
+    # print("Preds:", preds[:10])
+    # print(f"ASR (Attack Success Rate): {correct_predictions / total_predictions if total_predictions > 0 else 0}")
 
     return correct_predictions / total_predictions if total_predictions > 0 else 0
-
-# def should_inject(round, inject_prob=0.65):
-#     random.seed(round)
-#     return random.random() < inject_prob
-
 
 
 def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_dim=100):
@@ -412,8 +504,8 @@ def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_d
         discriminator.cuda()
         adversarial_loss.cuda()
     
-    optimizer_G = torch.optim.Adam(generator.parameters(), lr=0.001, betas=(0.5, 0.999))
-    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=0.001, betas=(0.5, 0.999))
+    optimizer_G = torch.optim.Adam(generator.parameters(), lr=0.002, betas=(0.5, 0.999))
+    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=0.0005, betas=(0.5, 0.999))
     
     
     scheduler_G = torch.optim.lr_scheduler.StepLR(optimizer_G, step_size=1, gamma=0.95)
@@ -431,7 +523,7 @@ def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_d
 
             # Configure input
             real_imgs = Variable(imgs.type(Tensor))
-
+ 
             # -----------------
             #  Train Generator
             # -----------------
@@ -473,7 +565,7 @@ def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_d
 
             batches_done = epoch * len(target_data) + i
             if batches_done % 50 == 0:
-                save_image(gen_imgs.data[:25], "output/images/%d.png" % batches_done, nrow=5, normalize=True)
+                save_image(gen_imgs.data[:25], "../output/images/%d.png" % batches_done, nrow=5, normalize=True)
         scheduler_G.step()
         scheduler_D.step()
     current_lr_G = optimizer_G.param_groups[0]['lr']
@@ -482,14 +574,13 @@ def gan_train(generator, discriminator, target_data, round, n_epochs=9, latent_d
     mean_g_loss = np.mean(g_losses)
     mean_d_loss = np.mean(d_losses)
     return mean_g_loss, mean_d_loss, real_imgs, gen_imgs
-        # selected_images
 
 
-def gan_metrics(g_loss, d_loss, output_dirs="output/plot"):
+def gan_metrics(g_loss, d_loss, output_dirs="../output/plot"):
+    os.makedirs(output_dirs, exist_ok=True)
     plt.figure(figsize=(10, 5))
     plt.plot(g_loss, label='Generator Loss')
     plt.plot(d_loss, label='Discriminator Loss')
-    # plt.ylim(0.6, 0.8)
     plt.xlabel('Iterations')
     plt.ylabel('Loss')
     plt.title('GAN Loss Metrics')

@@ -1,12 +1,11 @@
 """federated-learning: A Flower / PyTorch app."""
-
 import torch
 from flwr.client import NumPyClient, ClientApp
-from flwr.common import Context
+import time
 import os
-import json
-from federated_learning.config import *
-from federated_learning.task import (
+import sys
+from ..ultility.config import *
+from ..model.task import (
     Net,
     load_data,
     get_weights,
@@ -15,7 +14,10 @@ from federated_learning.task import (
     test,
 )
 
-from federated_learning.gan_model import (
+import flwr as fl
+from flwr.client import NumPyClient
+
+from ..model.gan_model import (
     Generator, 
     Discriminator, 
     weights_init_normal, 
@@ -25,7 +27,6 @@ from federated_learning.gan_model import (
     plot_real_fake_images, 
     # gan_metrics,
     create_attacker_data,
-    # should_inject
 )
 
 g_losses = []
@@ -54,6 +55,7 @@ class FlowerClient(NumPyClient):
         self.net.to(self.device)
 
     def fit(self, parameters, config):
+        start = time.time()
         set_weights(self.net, parameters)
         train_loss, val_loss, train_acc, val_acc = train(
             self.net,
@@ -62,6 +64,8 @@ class FlowerClient(NumPyClient):
             self.local_epochs,
             self.device,
         )
+        end = time.time()
+        print(f"[Client Victim]: Time Per Round: {end - start:.2f} seconds")
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     def evaluate(self, parameters, config):
@@ -84,7 +88,8 @@ class AttackerClient(NumPyClient):
         self.G.to(self.device)
         self.D.to(self.device)
         self.checkpoint_path = "tmp/gan_checkpoint.pth"
-
+        self.times_file = "tmp/round_times.txt"
+        
         if os.path.exists(self.checkpoint_path):
             checkpoint = torch.load(self.checkpoint_path)
             self.G.load_state_dict(checkpoint["G_state_dict"])
@@ -106,6 +111,7 @@ class AttackerClient(NumPyClient):
         
         
     def fit(self, parameters, config):
+        start = time.time()
         set_weights(self.net, parameters)
         #train the GAN
         cur_round = config["current_round"]
@@ -138,12 +144,28 @@ class AttackerClient(NumPyClient):
             self.local_epochs,
             self.device,
         )
-        plot_real_fake_images(self.net, real_img, fake_img, output_dir='output/result')
+        # plot_real_fake_images(self.net, real_img, fake_img, output_dir='output/result')
         self.save_checkpoint()
         g_losses.append(g_loss)
         d_losses.append(d_loss)
         # print("Length of g_losses:", len(g_losses))
         # print("Length of d_losses:", len(d_losses))
+        end = time.time()
+        print(f"[Client Attacker]: Time Per Round: {end - start:.2f} seconds")
+        round_time = end - start
+        with open(self.times_file, "a") as f:
+            f.write(f"{round_time:.2f}\n")
+        
+        cur_round = config["current_round"]
+        if cur_round == ROUND_TO_ATTACK + 24:  # Round cuối
+            with open(self.times_file, "r") as f:
+                times = [float(line.strip()) for line in f.readlines()]
+            total_time = sum(times)
+            avg_time = total_time / len(times)
+            print("\n=== Time Statistics ===")
+            print(f"Total time: {total_time:.2f} seconds")
+            print(f"Average time per round: {avg_time:.2f} seconds")
+            
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     
@@ -154,31 +176,44 @@ class AttackerClient(NumPyClient):
         # gan_metrics(g_losses, d_losses)
         # metric_plot(train_losses, val_losses, train_accuracy, val_accuracy)
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
-        
 
-def client_fn(context: Context):
-    # Load model and data
-    net = Net()
-    G = Generator(100)
-    D = Discriminator()
-    partition_id = context.node_config["partition-id"]
-    num_partitions = context.node_config["num-partitions"]
-    trainloader, valloader, testloader = load_data(partition_id, num_partitions)
-    # count_labels(trainloader)
-    local_epochs = context.run_config["local-epochs"]
-    target_digit = 1
-    if partition_id == 0: 
-        print(f"Created attacker client with id: {partition_id}")
-        target_data = attacker_data(trainloader, target_digit)
-        # target_data = attacker_data_no_filter(trainloader)
-        print("The number of samples in dataset:", len(target_data.dataset))
-        print("The number of batches in DataLoader:", len(target_data))
-        return AttackerClient(G, D, net, target_data, trainloader, valloader, testloader, local_epochs).to_client()
-    else: 
-        print(f"Created victim client with id: {partition_id}")
-        return FlowerClient(net, trainloader, valloader, testloader, local_epochs).to_client()
+print(">>> Starting client...")
+import sys
+partition_id = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+num_partitions = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+mode = "victim" if partition_id != 1 else "attacker"
+trainloader, valloader, testloader = load_data(partition_id, num_partitions)    
+print(f"Train size: {len(trainloader.dataset)}, Val size: {len(valloader.dataset)}, Test size: {len(testloader.dataset)}")
 
-# Flower ClientApp
-app = ClientApp(
-    client_fn,
+
+if mode == 'victim':
+    print(f"Created victim client with id: {partition_id}")
+    client = FlowerClient(
+        net=Net(),
+        trainloader=trainloader,
+        valloader=valloader,
+        testloader=testloader,
+        local_epochs=1 
+    ).to_client()
+else:
+    print(f"Created attacker client with id: {partition_id}")
+    target_data = attacker_data(trainloader, TARGETED_LABEL)
+    print("Type of target_data:", type(target_data))
+    print("The number of samples in dataset:", len(target_data.dataset))
+    print("The number of batches in DataLoader:", len(target_data))
+    client = AttackerClient(
+        G=Generator(100),
+        D=Discriminator(),
+        net=Net(),
+        target_data=target_data,
+        trainloader=trainloader,
+        valloader=valloader,
+        testloader=testloader,
+        local_epochs=1, 
+    ).to_client()
+
+fl.client.start_client(
+    server_address="localhost:8080",
+    client=client
+    # config={"num-server-rounds": 50, "fraction-fit": 0.1, "pretrain-epochs": pretrain_epochs}
 )
