@@ -5,9 +5,10 @@ from flwr.client import NumPyClient, ClientApp
 from flwr.common import Context
 import os
 import json
+import csv
 from federated_learning.ultility.config import *
 from federated_learning.model.task import (
-    Net,
+    # Net,
     load_data,
     get_weights,
     set_weights,
@@ -16,8 +17,8 @@ from federated_learning.model.task import (
 )
 
 from federated_learning.model.gan_model import (
-    Generator, 
-    Discriminator, 
+    # Generator, 
+    # Discriminator, 
     weights_init_normal, 
     gan_train, 
     attacker_data,
@@ -27,8 +28,16 @@ from federated_learning.model.gan_model import (
     create_attacker_data,
 )
 
-g_losses = []
-d_losses = []
+
+from federated_learning.model.quantization_gan import (
+    Generator,
+    Discriminator,
+)
+from federated_learning.model.quantization_cnn import Net
+
+
+# g_losses = []
+# d_losses = []
 
 from collections import Counter
 def count_labels(dataloader):
@@ -50,6 +59,8 @@ class FlowerClient(NumPyClient):
         self.testloader = testloader
         self.local_epochs = local_epochs
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.net.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
+        torch.ao.quantization.prepare_qat(self.net, inplace=True)
         self.net.to(self.device)
 
     def fit(self, parameters, config):
@@ -71,8 +82,14 @@ class FlowerClient(NumPyClient):
 class AttackerClient(NumPyClient):
     def __init__(self, G, D, net, target_data, trainloader, valloader, testloader, local_epochs):
         self.G = G
+        self.G.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
+        torch.ao.quantization.prepare_qat(self.G, inplace=True) 
         self.D = D
+        self.D.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
+        torch.ao.quantization.prepare_qat(self.D, inplace=True)
         self.net = net
+        self.net.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
+        torch.ao.quantization.prepare_qat(self.net, inplace=True)
         self.target_data = target_data
         self.trainloader = trainloader
         self.valloader = valloader
@@ -82,12 +99,13 @@ class AttackerClient(NumPyClient):
         self.net.to(self.device)
         self.G.to(self.device)
         self.D.to(self.device)
-        self.checkpoint_path = "../tmp/gan_checkpoint.pth"
+        self.checkpoint_path = "../tmp/"
 
-        if os.path.exists(self.checkpoint_path):
-            checkpoint = torch.load(self.checkpoint_path, weights_only=True)
-            self.G.load_state_dict(checkpoint["G_state_dict"])
-            self.D.load_state_dict(checkpoint["D_state_dict"])
+        if os.path.exists(self.checkpoint_path + "G_checkpoint.pt") and os.path.exists(self.checkpoint_path + "D_checkpoint.pt"):
+            G_checkpoint = torch.load(self.checkpoint_path + "G_checkpoint.pt", weights_only=True)
+            D_checkpoint = torch.load(self.checkpoint_path + "D_checkpoint.pt", weights_only=True)
+            self.G.load_state_dict(G_checkpoint)
+            self.D.load_state_dict(D_checkpoint)
             print("Loaded GAN checkpoint.")
         else:
             os.makedirs("../tmp", exist_ok=True)
@@ -96,17 +114,13 @@ class AttackerClient(NumPyClient):
             print("No GAN checkpoint found. Using initialized weights.")        
         
     def save_checkpoint(self):
-        checkpoint = {
-            "G_state_dict": self.G.state_dict(),
-            "D_state_dict": self.D.state_dict(),
-        }
-        torch.save(checkpoint, "../tmp/gan_checkpoint.pth")
+        torch.save(self.G.state_dict(), self.checkpoint_path + "G_checkpoint.pt")
+        torch.save(self.D.state_dict(), self.checkpoint_path + "D_checkpoint.pt")
         print("GAN checkpoint saved successfully!")
         
         
     def fit(self, parameters, config):
         set_weights(self.net, parameters)
-        #train the GAN
         cur_round = config["current_round"]
 
         g_loss, d_loss, real_img, fake_img = gan_train(
@@ -137,12 +151,32 @@ class AttackerClient(NumPyClient):
         )
         # plot_real_fake_images(self.net, real_img, fake_img, output_dir='output/result')
         self.save_checkpoint()
-        g_losses.append(g_loss)
-        d_losses.append(d_loss)
-        print("Length of g_losses:", len(g_losses))
-        print("Length of d_losses:", len(d_losses))
-        if cur_round % 1 == 0:
-            gan_metrics(g_losses, d_losses, output_dirs='../output/plot')
+        # g_losses.append(g_loss)
+        # d_losses.append(d_loss)
+        # print("Length of g_losses:", len(g_losses))
+        # print("Length of d_losses:", len(d_losses))
+
+        # Save losses to CSV after each round
+        csv_path = "../output/csv/gan_losses.csv"
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        write_header = not os.path.exists(csv_path)
+        with open(csv_path, mode="a", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            if write_header:
+                writer.writerow(["round", "g_loss", "d_loss"])
+            cur_round = config["current_round"]
+            writer.writerow([cur_round, g_loss, d_loss])
+
+        if cur_round % 5 == 0:
+            # Read losses from CSV for plotting
+            rounds, g_loss_list, d_loss_list = [], [], []
+            with open(csv_path, mode="r") as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    rounds.append(int(row["round"]))
+                    g_loss_list.append(float(row["g_loss"]))
+                    d_loss_list.append(float(row["d_loss"]))
+            gan_metrics(g_loss_list, d_loss_list, output_dirs='../output/plot')
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     
@@ -153,9 +187,6 @@ class AttackerClient(NumPyClient):
         checkpoint = {
             "net_state_dict": self.net.state_dict(),
         }
-        os.makedirs("../tmp", exist_ok=True)
-        torch.save(checkpoint, f"../tmp/net_checkpoint.pth")
-        print("Net checkpoint saved successfully!")
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
 
 import matplotlib.pyplot as plt

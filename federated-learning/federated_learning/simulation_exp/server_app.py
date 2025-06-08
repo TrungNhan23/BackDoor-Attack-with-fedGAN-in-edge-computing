@@ -4,7 +4,11 @@ from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from torchinfo import summary
-from federated_learning.model.task import Net, get_weights, display_predictions
+from federated_learning.model.task import (   
+    # Net, 
+    get_weights, 
+    display_predictions
+)
 import torch.nn as nn
 import torch
 import numpy as np
@@ -16,12 +20,17 @@ import os
 from typing import List, Dict, Tuple, Optional
 from federated_learning.ultility.config import *
 from federated_learning.model.gan_model import (
-    Generator, 
-    Discriminator, 
+    # Generator, 
+    # Discriminator, 
     predict_on_adversarial_testset, 
 )
 
+from federated_learning.model.quantization_gan import (
+    Generator,
+    Discriminator,
+)
 
+from federated_learning.model.quantization_cnn import Net
 current_round = 0
 
 def load_centralized_data(batch_size: int):
@@ -188,7 +197,11 @@ def weighted_average(metrics):
     weighted_accuracy = sum(accuracies) / num_examples_total
     return {"accuracy": weighted_accuracy}  # Return as a dictionary
 
- 
+def save_model(model, filename="net_model.pth", output_dirs="../tmp/"):
+    os.makedirs(output_dirs, exist_ok=True)
+    torch.save(model.state_dict(), os.path.join(output_dirs, filename))
+    print(f"Model saved to {os.path.join(output_dirs, filename)}")
+    
 def get_evaluate_fn(model):
     """Return an evaluation function for server-side evaluation using PyTorch and MNIST."""
 
@@ -252,7 +265,8 @@ def get_evaluate_fn(model):
         # Call plot_accuracy every 5 rounds
         if server_round % 5 == 0:
             plot_accuracy(history)
-            save_metrics_to_csv(history, "metrics" + str(ATTACK_MODE) + str(EPSILON) + "Clean-label" if Clean else "Flipping-label" + ".csv")
+            save_metrics_to_csv(history, "metrics_" + str(ATTACK_MODE) + str(EPSILON) + ("Clean-label" if Clean else "Flipping-label") + ".csv")
+            save_model(model, filename="net_model_" + str(ATTACK_MODE) + str(EPSILON) + ("Clean-label" if Clean else "Flipping-label") + ".pt")
             # plot_asr_and_ca(history) 
             # display_predictions(model, eval_loader, 1, device)
 
@@ -268,17 +282,27 @@ def server_fn(context: Context):
 
     # Initialize model parameters
     global_model = Net()
-    summary(Net(), input_size=(32, 1, 28, 28))
+    global_model.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
+    torch.ao.quantization.prepare_qat(global_model, inplace=True)
+    summary(global_model, input_size=(32, 1, 28, 28))
     # summary(Net(), input_size=(32, 1, 28, 28), device="cpu")
-    summary(Generator(100), input_size=(28, 100))
-    summary(Discriminator(), input_size=(28, 1, 28, 28))
+    G = Generator(100) 
+    G.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
+    torch.ao.quantization.prepare_qat(G, inplace=True)
+    summary(G, input_size=(28, 100))
+    D = Discriminator()
+    D.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
+    torch.ao.quantization.prepare_qat(D, inplace=True)
+    summary(D, input_size=(28, 1, 28, 28))
+    
     
     central_loader = load_centralized_data(batch_size=32)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     pretrain_epochs = context.run_config.get("pretrain-epochs", 5) 
     print("Pre-training global model on server...")
-    global_model = pretrain_on_server(global_model, central_loader, device, epochs=pretrain_epochs, learning_rate=1e-3)
+    global_model = pretrain_on_server(global_model, central_loader, device, 
+                                      epochs=pretrain_epochs, learning_rate=1e-3)
     
     
     ndarrays = get_weights(global_model)

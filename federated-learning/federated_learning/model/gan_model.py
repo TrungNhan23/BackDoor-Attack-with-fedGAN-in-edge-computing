@@ -487,7 +487,7 @@ def predict_on_adversarial_testset(model, testloader, current_round,
     adv_image = adv_images[0].cpu().detach().squeeze(0)
     transform = transforms.ToPILImage()
     pil_image = transform(adv_image)
-    pil_image.save(os.path.join(output_dir, f"adversarial_1_to_{target}.jpg"))
+    # pil_image.save(os.path.join(output_dir, f"adversarial_1_to_{target}.jpg"))
 
     # print(f"Predictions on adversarial test set: {predictions[:10]}")
     # print("Labels:", labels[:10])
