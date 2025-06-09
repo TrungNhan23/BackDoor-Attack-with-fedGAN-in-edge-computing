@@ -42,7 +42,7 @@ def measure_gan_performance(generator, noise_dim=100, device='cpu', num_samples=
 
 generator = Generator(100)
 discriminator = Discriminator() 
-checkpoint_path = "../../model_state_dict/gan/"
+checkpoint_path = "C:\\work\\UTE\\KLTN\\source\\BackDoor-Attack-with-fedGAN-in-edge-computing\\federated-learning\\model_state_dict\gan\\"
 generator.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
 torch.ao.quantization.prepare_qat(generator, inplace=True)
 
@@ -58,4 +58,10 @@ discriminator.load_state_dict(discriminator_statedict)
 
 generator.eval()
 discriminator.eval()
-# measure_gan_performance(generator, noise_dim=100, device='cpu', num_samples=100)
+measure_gan_performance(generator)
+
+
+quantization_gan = torch.ao.quantization.convert(generator.cpu(), inplace=False)
+quantization_gan.eval()
+
+measure_gan_performance(quantization_gan)
