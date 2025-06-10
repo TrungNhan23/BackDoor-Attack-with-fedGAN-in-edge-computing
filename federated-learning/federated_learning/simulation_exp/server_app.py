@@ -282,16 +282,16 @@ def server_fn(context: Context):
 
     # Initialize model parameters
     global_model = Net()
-    global_model.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
+    global_model.qconfig = torch.ao.quantization.get_default_qat_qconfig('qnnpack')
     torch.ao.quantization.prepare_qat(global_model, inplace=True)
     summary(global_model, input_size=(32, 1, 28, 28))
     # summary(Net(), input_size=(32, 1, 28, 28), device="cpu")
     G = Generator(100) 
-    G.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
+    G.qconfig = torch.ao.quantization.get_default_qat_qconfig('qnnpack')
     torch.ao.quantization.prepare_qat(G, inplace=True)
     summary(G, input_size=(28, 100))
     D = Discriminator()
-    D.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
+    D.qconfig = torch.ao.quantization.get_default_qat_qconfig('qnnpack')
     torch.ao.quantization.prepare_qat(D, inplace=True)
     summary(D, input_size=(28, 1, 28, 28))
     

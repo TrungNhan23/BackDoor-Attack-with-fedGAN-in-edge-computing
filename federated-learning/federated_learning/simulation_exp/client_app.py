@@ -34,10 +34,7 @@ from federated_learning.model.quantization_gan import (
     Discriminator,
 )
 from federated_learning.model.quantization_cnn import Net
-
-
-# g_losses = []
-# d_losses = []
+import torch.ao.quantization as tq
 
 from collections import Counter
 def count_labels(dataloader):
@@ -59,10 +56,12 @@ class FlowerClient(NumPyClient):
         self.testloader = testloader
         self.local_epochs = local_epochs
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.net.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
-        torch.ao.quantization.prepare_qat(self.net, inplace=True)
+        self.net.qconfig = tq.get_default_qat_qconfig('qnnpack')
+        tq.prepare_qat(self.net, inplace=True)
         self.net.to(self.device)
-
+        self.checkpoint_path = "../tmp/"
+        
+        
     def fit(self, parameters, config):
         set_weights(self.net, parameters)
         train_loss, val_loss, train_acc, val_acc = train(
@@ -72,6 +71,10 @@ class FlowerClient(NumPyClient):
             self.local_epochs,
             self.device,
         )
+        self.net.eval()
+        torch.save(self.net.state_dict(), "../tmp/net_checkpoint.pt") 
+        net_quantized = tq.convert(self.net, inplace=False)
+        torch.save(net_quantized.state_dict(), "../tmp/net_quantized.pt")
         return get_weights(self.net), len(self.trainloader.dataset), {"train_loss": train_loss}
 
     def evaluate(self, parameters, config):
@@ -82,14 +85,14 @@ class FlowerClient(NumPyClient):
 class AttackerClient(NumPyClient):
     def __init__(self, G, D, net, target_data, trainloader, valloader, testloader, local_epochs):
         self.G = G
-        self.G.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
-        torch.ao.quantization.prepare_qat(self.G, inplace=True) 
+        self.G.qconfig = tq.get_default_qat_qconfig('qnnpack')
+        tq.prepare_qat(self.G, inplace=True)
         self.D = D
-        self.D.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
-        torch.ao.quantization.prepare_qat(self.D, inplace=True)
+        self.D.qconfig = tq.get_default_qat_qconfig('qnnpack')
+        tq.prepare_qat(self.D, inplace=True)
         self.net = net
-        self.net.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
-        torch.ao.quantization.prepare_qat(self.net, inplace=True)
+        self.net.qconfig = tq.get_default_qat_qconfig('qnnpack')
+        tq.prepare_qat(self.net, inplace=True)
         self.target_data = target_data
         self.trainloader = trainloader
         self.valloader = valloader
@@ -122,7 +125,7 @@ class AttackerClient(NumPyClient):
     def fit(self, parameters, config):
         set_weights(self.net, parameters)
         cur_round = config["current_round"]
-
+        
         g_loss, d_loss, real_img, fake_img = gan_train(
             self.G, 
             self.D, 
@@ -151,11 +154,6 @@ class AttackerClient(NumPyClient):
         )
         # plot_real_fake_images(self.net, real_img, fake_img, output_dir='output/result')
         self.save_checkpoint()
-        # g_losses.append(g_loss)
-        # d_losses.append(d_loss)
-        # print("Length of g_losses:", len(g_losses))
-        # print("Length of d_losses:", len(d_losses))
-
         # Save losses to CSV after each round
         csv_path = "../output/csv/gan_losses.csv"
         os.makedirs(os.path.dirname(csv_path), exist_ok=True)
@@ -182,11 +180,13 @@ class AttackerClient(NumPyClient):
     
     def evaluate(self, parameters, config):
         set_weights(self.net, parameters)
+        self.G.eval()
+        self.D.eval()
+        G_quantized = tq.convert(self.G, inplace=False)
+        D_quantized = tq.convert(self.D, inplace=False)
+        torch.save(G_quantized.state_dict(), "../tmp/G_quantized.pt")
+        torch.save(D_quantized.state_dict(), "../tmp/D_quantized.pt")
         loss, accuracy = test(self.net, self.testloader, self.device)
-        # Save checkpoint of net
-        checkpoint = {
-            "net_state_dict": self.net.state_dict(),
-        }
         return loss, len(self.testloader.dataset), {"accuracy": accuracy}
 
 import matplotlib.pyplot as plt

@@ -34,7 +34,6 @@ class Generator(nn.Module):
         img = self.dequant(img)
         return img
 
-
 class Discriminator(nn.Module):
     def __init__(self):
         super().__init__()
