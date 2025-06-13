@@ -1,4 +1,4 @@
-ATTACK_MODE = 'nes-pgd-imp'
+ATTACK_MODE = 'pgd-imp'
 EPSILON = 0.3
 NUM_STEPS = 30
 Clean = True
