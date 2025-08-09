@@ -29,7 +29,8 @@ def load_centralized_data(batch_size: int):
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,))
     ])
-    full_train_dataset = datasets.MNIST(root="../data", train=True, download=True, transform=transform)
+    # full_train_dataset = datasets.MNIST(root="../data", train=True, download=True, transform=transform)
+    full_train_dataset = datasets.FashionMNIST(root="../data", train=True, download=True, transform=transform)
     indices = torch.randperm(len(full_train_dataset))[:1000]
     subset_dataset = Subset(full_train_dataset, indices)
     train_loader = DataLoader(subset_dataset, batch_size=batch_size, shuffle=True)

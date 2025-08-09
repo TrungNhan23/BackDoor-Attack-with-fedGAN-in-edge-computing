@@ -61,7 +61,8 @@ def load_data(partition_id: int, num_partitions: int, num_samples: int = 40000, 
             class_assignment_mode="deterministic" 
         )
         fds = FederatedDataset(
-            dataset="mnist",
+            # dataset="mnist",
+            dataset="zalando-datasets/fashion_mnist", 
             partitioners={"train": partitioner},
         )
     partition = fds.load_partition(partition_id)
