@@ -356,47 +356,55 @@ def create_attacker_data(model, generator, trainloader,
                          num_samples=NUM_SAMPLES, 
                          target_labels=TARGETED_LABEL,
                          mode='fgsm'):
-    z = torch.randn(num_samples, 100).to(device)
-    generated_images = generator(z)
-    generated_labels = torch.full((num_samples,), target_labels).to(device)
+    images_list = []
+    labels_list = []
+
     
+    for batch in trainloader:
+        imgs = batch["image"].to(device)
+        lbls = batch["label"].to(device)
+
+        if not untargeted:
+            lbls = torch.full_like(lbls, target_labels)
+
+        images_list.append(imgs)
+        labels_list.append(lbls)
+
+        if num_samples and sum(len(l) for l in labels_list) >= num_samples:
+            break
+
+    images_all = torch.cat(images_list, dim=0)
+    labels_all = torch.cat(labels_list, dim=0)
     
     if mode == 'fgsm':
-        adv_imgs = generate_FGSM_adversarial_images(model, 
-                                            generated_images, 
-                                            generated_labels,
-                                            untargeted=untargeted,
-                                            epsilon=EPSILON)
+        adv_imgs = generate_FGSM_adversarial_images(model, images_all, labels_all,
+                                                    untargeted=untargeted,
+                                                    epsilon=EPSILON)
     elif mode == 'pgd':
-        adv_imgs = generate_PGD_adversarial_images(model, 
-                                            generated_images, 
-                                            generated_labels,
-                                            untargeted=untargeted,
-                                            epsilon=EPSILON)
+        adv_imgs = generate_PGD_adversarial_images(model, images_all, labels_all,
+                                                   untargeted=untargeted,
+                                                   epsilon=EPSILON)
     elif mode == 'pgd-imp':
-        adv_imgs = generate_PGD_imp_adversarial_images(model, 
-                                            generated_images, 
-                                            generated_labels,
-                                            untargeted=untargeted,
-                                            epsilon=EPSILON,
-                                            num_steps=NUM_STEPS,
-                                            device=device)
-    elif mode == 'nes-pgd-imp':
-        adv_imgs = generate_NES_PGD_Imp_adversarial_images(model,
-                                                       generated_images,
-                                                       generated_labels,
-                                                       untargeted=untargeted, 
+        adv_imgs = generate_PGD_imp_adversarial_images(model, images_all, labels_all,
+                                                       untargeted=untargeted,
                                                        epsilon=EPSILON,
-                                                       step=NUM_STEPS, 
+                                                       num_steps=NUM_STEPS,
                                                        device=device)
+    elif mode == 'nes-pgd-imp':
+        adv_imgs = generate_NES_PGD_Imp_adversarial_images(model, images_all, labels_all,
+                                                           untargeted=untargeted,
+                                                           epsilon=EPSILON,
+                                                           step=NUM_STEPS,
+                                                           device=device)
     else:
         raise ValueError("Invalid mode. Choose either 'fgsm' or 'pgd' or 'pgd_imp'.")
     
     
-    new_imges = torch.cat([generated_images, adv_imgs], dim=0)
-    new_labels = torch.cat([generated_labels, generated_labels], dim=0)
-    
-    attack_loader = inject_images_into_dataloader(trainloader, new_imges, new_labels, batch_size=32, device=device)
+    new_images = torch.cat([images_all, adv_imgs], dim=0)
+    new_labels = torch.cat([labels_all, labels_all], dim=0)
+
+    attack_loader = inject_images_into_dataloader(trainloader, new_images, new_labels,
+                                                  batch_size=32, device=device)
     return attack_loader
 
 
