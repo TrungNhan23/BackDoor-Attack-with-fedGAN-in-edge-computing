@@ -1,7 +1,7 @@
-ATTACK_MODE = 'nes-pgd-imp'
+ATTACK_MODE = 'pgd'
 EPSILON = 0.3
-NUM_STEPS = 30
-Clean = True
+NUM_STEPS = 40
+Clean = False
 DATA_MODE = 'iid'
 #if test in clean label attack, set the untargeted to True
 if Clean:
@@ -9,8 +9,8 @@ if Clean:
     TARGETED_LABEL = 1
 else: 
     UNTARGETED = False
-    TARGETED_LABEL = 3
+    TARGETED_LABEL = 8
     
 EPSILON_STEP = EPSILON / NUM_STEPS
-NUM_SAMPLES = 100
-ROUND_TO_ATTACK = 5
+NUM_SAMPLES = 200
+ROUND_TO_ATTACK = 10

@@ -226,7 +226,7 @@ def client_fn(context: Context):
     #visualize data distribution
     # plot_data_distribution(trainloader, partition_id)
     local_epochs = context.run_config["local-epochs"]
-    target_digit = 1
+    target_digit = 6
     if partition_id == 1: 
         print(f"Created attacker client with id: {partition_id}")
         target_data = attacker_data(trainloader, target_digit)

@@ -228,7 +228,7 @@ def generate_FGSM_adversarial_images(model, images, labels,
 
     
 def generate_PGD_adversarial_images(model, images, labels, untargeted,
-                                    epsilon=0.1, 
+                                    epsilon=EPSILON, 
                                     epsilon_step=EPSILON_STEP, 
                                     num_steps=NUM_STEPS):
     x = images.clone().detach()
@@ -424,7 +424,7 @@ def predict_on_adversarial_testset(model, testloader, current_round,
 
         
         if isClean is not True: 
-            mask = (labels == 1)
+            mask = (labels == 6)
             images = images[mask]
             labels = labels[mask]
             
@@ -489,10 +489,10 @@ def predict_on_adversarial_testset(model, testloader, current_round,
     pil_image = transform(adv_image)
     pil_image.save(os.path.join(output_dir, f"adversarial_1_to_{target}.jpg"))
 
-    # print(f"Predictions on adversarial test set: {predictions[:10]}")
-    # print("Labels:", labels[:10])
-    # print("Preds:", preds[:10])
-    # print(f"ASR (Attack Success Rate): {correct_predictions / total_predictions if total_predictions > 0 else 0}")
+    print(f"Predictions on adversarial test set: {predictions[:10]}")
+    print("Labels:", labels[:10])
+    print("Preds:", preds[:10])
+    print(f"ASR (Attack Success Rate): {correct_predictions / total_predictions if total_predictions > 0 else 0}")
 
     return correct_predictions / total_predictions if total_predictions > 0 else 0
 

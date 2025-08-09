@@ -198,7 +198,7 @@ def get_evaluate_fn(model):
         transforms.ToTensor(),
         transforms.Normalize((0.5,), (0.5,))
     ])
-    full_dataset = datasets.MNIST(root="../data", download=False, transform=transform)
+    full_dataset = datasets.FashionMNIST(root="../data", download=False, transform=transform)
     
     
     eval_dataset = Subset(full_dataset, range(len(full_dataset) - 2000,
