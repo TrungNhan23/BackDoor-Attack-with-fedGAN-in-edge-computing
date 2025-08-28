@@ -1,8 +1,8 @@
-ATTACK_MODE = 'pgd'
-EPSILON = 0.3
-NUM_STEPS = 40
-Clean = False
-DATA_MODE = 'iid'
+ATTACK_MODE = 'pgd-imp'
+EPSILON = 0.20
+NUM_STEPS = 30
+Clean = True
+DATA_MODE = 'non-iid'
 #if test in clean label attack, set the untargeted to True
 if Clean:
     UNTARGETED = True
